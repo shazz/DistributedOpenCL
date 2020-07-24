@@ -19,6 +19,8 @@ print("Buffer types: {}, {}, {} of size: {} bytes".format(a_np.dtype, b_np.dtype
 cl_cluster = OpenCLCluster(nodes = [ {"name": "rpi1", "ip": "localhost"} ])
 # cl_cluster = OpenCLCluster(nodes = [ {"name": "rpi1", "ip": "localhost"}, {"name": "rpi2", "ip": "localhost"} ])
 
+print("---------------------------------------------------------------------------")
+
 # get platforms for each cluster
 print("Available platforms on the Clusters:")
 for cluster_node_name in cl_cluster.get_nodes():
@@ -33,12 +35,15 @@ for cluster_node_name in cl_cluster.get_nodes():
         print("\tVersion: {}".format(platform.version))
 
 # split the data per nb of platforms
-list_a_np = np.array_split(a_np, len(platforms))
-list_b_np = np.array_split(b_np, len(platforms))
-list_res_np = np.array_split(res_np, len(platforms))
+print("Splitting the arrays in {} parts".format(len(cl_cluster.get_nodes())))
+list_a_np = np.array_split(a_np, len(cl_cluster.get_nodes()))
+list_b_np = np.array_split(b_np, len(cl_cluster.get_nodes()))
+list_res_np = np.array_split(res_np, len(cl_cluster.get_nodes()))
 
 cl_nodes = {}
 for index, cluster_node_name in enumerate(cl_cluster.get_nodes()):
+
+    print("---------------------------------------------------------------------------")
 
     # create openCL context on platform rpi1, first device
     print("Getting node for platform")
@@ -73,12 +78,14 @@ for index, cluster_node_name in enumerate(cl_cluster.get_nodes()):
 
     print("Create remote np split arrays and copy data there")
     t_trans0 = time.process_time_ns()
-    # s_a_np = rpyc.utils.classic.deliver(node._conn, list_a_np[index])
-    # s_b_np = rpyc.utils.classic.deliver(node._conn, list_b_np[index])
-    # s_res_np = rpyc.utils.classic.deliver(node._conn, list_res_np[index])
     s_a_np = node.np.array(list_a_np[index])
     s_b_np = node.np.array(list_b_np[index])
-    s_res_np = node.np.array(list_res_np[index])
+    s_res_np = node.np.empty_like(s_a_np)
+    #s_res_np = node.np.array(list_res_np[index])
+    
+    # s_a_np = rpyc.utils.classic.deliver(node._conn, list_a_np[index])
+    # s_b_np = rpyc.utils.classic.deliver(node._conn, list_b_np[index])
+    # s_res_np = rpyc.utils.classic.deliver(node._conn, list_res_np[index])    
     t_trans1 = time.process_time_ns()
 
     print("Copy data to device buffers")
@@ -116,10 +123,12 @@ for index, cluster_node_name in enumerate(cl_cluster.get_nodes()):
     list_res_np[index] = np.array(s_res_np) #rpyc.utils.classic.obtain(s_res_np)
     t_trans3 = time.process_time_ns()
 
-    cl_nodes[cluster_node_name]['transfer_size'] = list_a_np[index].nbytes+ list_b_np[index].nbytes + list_res_np[index].nbytes
-    cl_nodes[cluster_node_name]['back_transfer_size'] = list_res_np[index].nbytes
+    cl_nodes[cluster_node_name]['transfer_size'] = list_a_np[index].nbytes + list_b_np[index].nbytes
     cl_nodes[cluster_node_name]['time_transfer_cluster_to_host'] = (t_trans1-t_trans0)/1000000
+    
+    cl_nodes[cluster_node_name]['back_transfer_size'] = list_res_np[index].nbytes
     cl_nodes[cluster_node_name]['time_transfer_host_to_cluster'] = (t_trans3-t_trans2)/1000000
+
     cl_nodes[cluster_node_name]['time_copy_device_to_host'] = (t3-t2)/1000000
     cl_nodes[cluster_node_name]['time_compute'] = (t1-t0)/1000000
 
@@ -137,16 +146,18 @@ print("Size of global array: {}".format(len(res_np)))
 # concatenate all sub results
 res_np = np.concatenate(list_res_np, axis=None)
 
+print("---------------------------------------------------------------------------")
 print("Comparing results")
-print("Difference :{}".format(res_np - res_local))
-print(s_a_np[0:5])
-print(s_b_np[0:5])
-print(res_np[0:5])
-print(res_local[0:5])
+print("Difference   :{}".format(res_np - res_local))
+print("A            : {}".format(a_np))
+print("B            : {}".format(b_np))
+print("Result OpenCL: {}".format(res_np))
+print("Result Numpy : {}".format(res_local))
 
 print("Checking the norm between both: {}".format(np.linalg.norm(res_np - res_local)))
 print("Checking results are mostly the same: ", np.allclose(res_np, res_local))
 
+print("---------------------------------------------------------------------------")
 print("Time to process:")
 for node, data in cl_nodes.items():
     print("time to copy: {} ms for node {}".format(data['time_copy_device_to_host'], node))
