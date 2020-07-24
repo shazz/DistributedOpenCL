@@ -13,7 +13,7 @@ print("Generate {} random numbers of type {}".format(vector_size, str(vector_typ
 a_np = np.random.rand(vector_size).astype(vector_type)
 b_np = np.random.rand(vector_size).astype(vector_type)
 res_np = np.empty_like(a_np).astype(vector_type)
-print("Buffer types: {}, {}, {} of size: {} bytes".format(a_np.dtype, b_np.dtype, res_np.dtype, a_np.__sizeof__()))
+print("Buffer types: {}, {}, {} of size: {} bytes".format(a_np.dtype, b_np.dtype, res_np.dtype, a_np.nbytes))
 
 # create cluster
 cl_cluster = OpenCLCluster(nodes = [ {"name": "rpi1", "ip": "localhost"} ])
@@ -73,6 +73,9 @@ for index, cluster_node_name in enumerate(cl_cluster.get_nodes()):
 
     print("Create remote np split arrays and copy data there")
     t_trans0 = time.process_time_ns()
+    # s_a_np = rpyc.utils.classic.deliver(node._conn, list_a_np[index])
+    # s_b_np = rpyc.utils.classic.deliver(node._conn, list_b_np[index])
+    # s_res_np = rpyc.utils.classic.deliver(node._conn, list_res_np[index])
     s_a_np = node.np.array(list_a_np[index])
     s_b_np = node.np.array(list_b_np[index])
     s_res_np = node.np.array(list_res_np[index])
@@ -110,10 +113,11 @@ for index, cluster_node_name in enumerate(cl_cluster.get_nodes()):
 
     print("Updating local result")
     t_trans2 = time.process_time_ns()
-    list_res_np[index] = np.array(s_res_np) #rpyc.classic.obtain(s_res_np)
+    list_res_np[index] = np.array(s_res_np) #rpyc.utils.classic.obtain(s_res_np)
     t_trans3 = time.process_time_ns()
 
-    cl_nodes[cluster_node_name]['transfer_size'] = list_a_np[index].__sizeof__() + list_b_np[index].__sizeof__() + list_res_np[index].__sizeof__()
+    cl_nodes[cluster_node_name]['transfer_size'] = list_a_np[index].nbytes+ list_b_np[index].nbytes + list_res_np[index].nbytes
+    cl_nodes[cluster_node_name]['back_transfer_size'] = list_res_np[index].nbytes
     cl_nodes[cluster_node_name]['time_transfer_cluster_to_host'] = (t_trans1-t_trans0)/1000000
     cl_nodes[cluster_node_name]['time_transfer_host_to_cluster'] = (t_trans3-t_trans2)/1000000
     cl_nodes[cluster_node_name]['time_copy_device_to_host'] = (t3-t2)/1000000
@@ -147,8 +151,8 @@ print("Time to process:")
 for node, data in cl_nodes.items():
     print("time to copy: {} ms for node {}".format(data['time_copy_device_to_host'], node))
     print("time to compute: {} ms for node {}".format(data['time_compute'], node))
-    print("time to transfer to host: {} ms for node {} ({} MB/s)".format(data['time_transfer_cluster_to_host'], node,   round( (data['transfer_size']/(1024*1024))/(data['time_transfer_cluster_to_host']/1000), 2) ))
-    print("time to transfer from host: {} ms for node {} ({} MB/s)".format(data['time_transfer_host_to_cluster'], node, round( (data['transfer_size']/(1024*1024))/(data['time_transfer_host_to_cluster']/1000), 2) ))
+    print("time to transfer {} MB to host: {} ms for node {} ({} MB/s)".format(round(data['transfer_size']/(1024*1024),2), data['time_transfer_cluster_to_host'], node, round( (data['transfer_size']/(1024*1024))/(data['time_transfer_cluster_to_host']/1000), 2) ))
+    print("time to transfer {} MB from host: {} ms for node {} ({} MB/s)".format(round(data['back_transfer_size']/(1024*1024),2), data['time_transfer_host_to_cluster'], node, round( (data['back_transfer_size']/(1024*1024))/(data['time_transfer_host_to_cluster']/1000), 2) ))
 
 print("time to transfer using cluster: {} ms".format(sum([data['time_transfer_cluster_to_host'] + data['time_transfer_host_to_cluster'] for data in cl_nodes.values()])))
 print("time to copy from device using cluster: {} ms".format(sum([data['time_copy_device_to_host'] for data in cl_nodes.values()])))
