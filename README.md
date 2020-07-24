@@ -5,12 +5,13 @@ A PoC of distributed OpenCL on a Raspberry Pi 3 cluster
 A cluster of n Raspberry Pi 3 running each :
 - [Raspberry Pi OS (32-bit) Lite](https://www.raspberrypi.org/downloads/raspberry-pi-os/)
 - [VC4CL](https://github.com/doe300/VC4CL)
-- `libatlas-base-dev` (`sudo apt-get install libatlas-base-dev`)
-- `pip3` (`sudo apt-get install python3-pip`)
+- optional [pocl](https://github.com/ogmacorp/pocl)
 
 ### Installation
 On each node of the cluster, run:
 - copy the `node` folder
+- `sudo apt-get install libatlas-base-dev`
+- `sudo apt-get install python3-pip`
 - `sudo pip3 install pyopencl rpyc`
 
 Optional
@@ -28,7 +29,7 @@ On any 3rd party computer or any node, run:
 - `cd cluster_host`
 - `python3 demo_cluster.py`
 
-### Help
+### How to install dependencies?
 
  1. How to install `pocl` on the rpi 3?
  
