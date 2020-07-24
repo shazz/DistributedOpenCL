@@ -5,7 +5,7 @@ A PoC of distributed OpenCL on a Raspberry Pi 3 cluster
 A cluster of n Raspberry Pi 3 running each :
 - [Raspberry Pi OS (32-bit) Lite](https://www.raspberrypi.org/downloads/raspberry-pi-os/)
 - [VC4CL](https://github.com/doe300/VC4CL)
-- optional [pocl](https://github.com/ogmacorp/pocl)
+- optional [pocl](https://github.com/ogmacorp/pocl) to have a second OpenCL platform using the ARM CPU
 
 ### Installation
 On each node of the cluster, run:
@@ -14,11 +14,9 @@ On each node of the cluster, run:
 - `sudo apt-get install python3-pip`
 - `sudo pip3 install pyopencl rpyc`
 
-Optional
-- install `pocl` to have a second OpenCL platform using the ARM CPU
-
 ### Start the nodes
 On each node of the cluster, run:
+- copy the `node` folder
 - `cd node`
 - `sudo python3 opencl_node.py`
 
