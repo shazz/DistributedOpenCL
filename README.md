@@ -32,8 +32,9 @@ On any 3rd party computer or any node, run:
  1. How to install `pocl` on the rpi 3?
  
  ````
- sudo apt install libhwloc-dev ocl-icd-opencl-dev libglew-dev zlib1g-dev libedit-dev libclang-7-dev
- git clone https://github.com/ogmacorp/pocl.git
+ sudo apt install git libhwloc-dev ocl-icd-opencl-dev ocl-icd-libopencl1 ocl-icd-dev  libhwloc-dev zlib1g zlib1g-dev clinfo libglew-dev zlib1g-dev libedit-dev libclang-7-dev git cmake llvm-7 clang-7
+ #sudo apt install -y build-essential pkg-config libclang-dev ninja-build  dialog apt-utils
+ git clone https://github.com/pocl/pocl.git
  cd pocl
  mkdir build; cd build
  cmake -DLLC_HOST_CPU=cortex-a53 -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-7 -DSTATIC_LLVM=1 -DENABLE_ICD=1 ..
