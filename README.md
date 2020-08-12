@@ -7,6 +7,53 @@ A cluster of n Raspberry Pi 3 running each :
 - [VC4CL](https://github.com/doe300/VC4CL)
 - optional [pocl](https://github.com/ogmacorp/pocl) to have a second OpenCL platform using the ARM CPU
 
+### Configure the cluster nodes
+
+for Raspberry PIs 3:
+
+ 1. Flash as Micro SD card using the latest Raspbian / Raspberry Pi OS
+
+ 2. Before installing the SD Card, do the following
+
+ Enable Wifi
+ ```
+ touch ssh
+ cat > wpa_supplicant.conf
+ country=US
+ ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+ update_config=1
+
+ network={
+  scan_ssid=1
+  ssid="<your_ssid>"
+  psk="<your_wifi_password>"
+ }
+ ```
+ 
+ 3. Set the Ethernet adapter with a static IP (ex: 10.0.0.5)
+ ```
+ sudo nano /etc/dhpcd.conf  
+ # It is possible to fall back to a static IP if DHCP fails:
+ # define static profile
+ profile static_eth0
+ static ip_address=10.0.0.5/24
+ #static routers=192.168.1.1
+ #static domain_name_servers=192.168.1.1
+
+ # fallback to static profile on eth0
+ interface eth0
+ fallback static_eth0
+ ```
+
+ 4. Install the SD card and boot
+
+ 5. from the master node, copy its SSH keys
+ 
+ ```
+ # copy rsa keys
+ ssh-copy-id 10.0.0.5
+ ```
+
 ### Installation
 On each node of the cluster, run:
 - copy the `node` folder
@@ -41,6 +88,8 @@ On any 3rd party computer or any node, run:
  make
  sudo make install
  make check
+ 
+ sudo cp /usr/local/etc/OpenCL/vendors/pocl.icd /etc/OpenCL/vendors/
  sudo clinfo
  ````
  
