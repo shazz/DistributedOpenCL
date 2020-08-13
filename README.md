@@ -1,6 +1,22 @@
 # DistributedOpenCL
 A PoC of distributed OpenCL on a Raspberry Pi 3 cluster
 
+### How to run the demos?
+
+ 1. Follow the requirements and configration below
+
+ 1. On one slave node of the cluster run:
+ ```bash
+ cd node
+ sudo python3 service.py
+ ```
+
+ 1. on the master node of the cluster run:
+ ```bash
+ cd samples
+ python3 app_<SAMPLE_NAME>.py
+ ```
+
 ### Requirements
 A cluster of n Raspberry Pi 3 running each :
 - [Raspberry Pi OS (32-bit) Lite](https://www.raspberrypi.org/downloads/raspberry-pi-os/)
