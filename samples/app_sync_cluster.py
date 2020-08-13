@@ -16,10 +16,7 @@ b_np = np.random.rand(size).astype(object_type)
 nodes = [ {"name": "rpi-opencl1", "ip": "localhost"}, {"name": "rpi-opencl2", "ip": "localhost"}  ]
 
 @timer
-def compute_on_cluster(cluster, kernel):
-
-    print("Creating a clustered context")
-    cl_context = cluster.create_cluster_context()
+def compute_on_cluster(cl_context, kernel):
 
     print("Compiling kernel on all the nodes of the cluster")
     cl_context.compile_kernel(kernel, use_prefered_vector_size = "float")
@@ -69,10 +66,18 @@ if __name__ == "__main__":
     for platform in platforms:
         print(json.dumps(platform, indent=4, sort_keys=True))
 
-    res_cl_cluster = compute_on_cluster(cluster, kernel)
+    print("Creating a clustered context")
+    context = cluster.create_cluster_context()
+
+    print("Computing kernel {} on the clustered context".format(kernel_name))
+    res_cl_cluster = compute_on_cluster(context, kernel)
 
     print("comparing cluster results")
     compare_results(res_cl_cluster)
+
+    print("Cleaning")
+    cluster.delete_cluster_context(context)
+    cluster.disconnect_cluster_context(context)    
 
 
 

@@ -86,10 +86,14 @@ if __name__ == "__main__":
     for platform in node1_platforms.values():
         print(json.dumps(platform, indent=4, sort_keys=True))
 
+    print("Computing kernel {} on the node {}".format(kernel_name, node1.node_name))
     res_cl = compute_on_one_node(node1, kernel)
     compare_results(res_cl)
 
+    print("Cleaning")
+    node1.delete_context()
     node1.disconnect()
+
 
 
     

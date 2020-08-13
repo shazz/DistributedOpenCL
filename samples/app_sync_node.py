@@ -40,11 +40,9 @@ def compute_on_one_node(node, kernel):
     node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
 
     print("Executing the Kernel")
-    res_np_arrays =  np.array(node.execute_kernel(kernel_name, (size,), True))
+    res_list = node.execute_kernel(kernel_name, (size,), True)
 
-    node.delete_context()
-
-    return res_np_arrays
+    return res_list
 
 def compare_results(res_cl):
     print("Comparing the (a+b) and (a*b) results with local numpy")
@@ -81,11 +79,14 @@ if __name__ == "__main__":
     for platform in node1_platforms.values():
         print(json.dumps(platform, indent=4, sort_keys=True))
 
+    print("Computing kernel {} on the node {}".format(kernel_name, node1.node_name))
     res_cl_node = compute_on_one_node(node1, kernel)
 
     print("comparing node results")
     compare_results(res_cl_node)
 
+    print("Cleaning")
+    node1.delete_context()
     node1.disconnect()
 
 

@@ -45,7 +45,7 @@ class RPyOpenCLContext():
 
         # output OpenCL buffers and associated numpy arrays
         self.output_buffers = []
-        self.output_arrays = []
+        self.output_list = []
 
         logging.debug("Create OpenCL context for platform {}".format(self.platform))
         self.ctx = cl.Context(
@@ -132,7 +132,7 @@ class RPyOpenCLContext():
 
         buffer = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, destbuf.nbytes)
         self.output_buffers.append(buffer)
-        self.output_arrays.append(destbuf)
+        self.output_list.append(destbuf)
 
     def compile_kernel(self, kernel : str, use_prefered_vector_size : str):
         if use_prefered_vector_size not in [None, 'char', 'short', 'int', 'long', 'half', 'float', 'double']:
@@ -154,12 +154,11 @@ class RPyOpenCLContext():
         self.prg = cl.Program(self.ctx, kernel)
         self.prg.build()
 
-    def execute_kernel(self, kernel_name: str, work_size: tuple, wait_execution: bool = True):
+    def execute_kernel(self, kernel_name: str, work_size: tuple, wait_execution: bool = True) -> np.array:
 
         for kernel in self.prg.all_kernels():
             logging.debug("Kernel available: {}".format(kernel.get_info(cl.kernel_info.FUNCTION_NAME)))
             if kernel.get_info(cl.kernel_info.FUNCTION_NAME) == kernel_name:
-    
                 try:
                     if kernel.get_info(cl.kernel_info.NUM_ARGS) != len(self.input_buffers) + len(self.output_buffers):
                         raise ValueError("Kernel function args number ({}) is different from input and ouput buffers ({})".format(kernel.get_info(cl.kernel_info.NUM_ARGS), len(self.input_buffers)))
@@ -188,12 +187,12 @@ class RPyOpenCLContext():
                     if wait_execution:
                         self.enqueue_event.wait()
 
-                        logging.debug("enqueue from {} to {}".format(self.output_buffers, self.output_arrays))
-                        for array, buffer in zip(self.output_arrays, self.output_buffers):
+                        logging.debug("enqueue from {} to {}".format(self.output_buffers, self.output_list))
+                        for array, buffer in zip(self.output_list, self.output_buffers):
                             cl.enqueue_copy(self.queue, array, buffer)
 
-                        logging.debug("Return local arrays: {}".format(self.output_arrays))
-                        return self.output_arrays
+                        logging.debug("Return local arrays: {}".format(self.output_list))
+                        return np.array(self.output_list)
                     else:
                         logging.debug("Adding callback on COMPLETE event")
                         self.enqueue_event.set_callback(cl.command_execution_status.COMPLETE, self.copy_on_callback)
@@ -204,6 +203,7 @@ class RPyOpenCLContext():
                     raise RuntimeError("Unexpected error", e)
 
                 # kernel found, done!
+                logging.error("We shoud never get here else there is a problem!!!")
                 break
 
         raise RuntimeError("Kernel {} not found".format(kernel_name))            
@@ -214,12 +214,12 @@ class RPyOpenCLContext():
             if self.callback is None:
                 raise RuntimeError("Remote callback is not set!")
 
-            logging.debug("On callback for event {}, enqueue from {} to {}".format(status, self.output_buffers, self.output_arrays)) 
-            for array, buffer in zip(self.output_arrays, self.output_buffers):
+            logging.debug("On callback for event {}, enqueue from {} to {}".format(status, self.output_buffers, self.output_list)) 
+            for array, buffer in zip(self.output_list, self.output_buffers):
                 cl.enqueue_copy(self.queue, array, buffer)
 
             logging.debug("Call remote callback {} with results".format(type(self.callback)))
-            self.callback(self.output_arrays)
+            self.callback(self.output_list)
 
         except Exception as e:
             traceback.print_exc()
