@@ -5,6 +5,7 @@ import rpyc
 from rpyc import Service
 from RPyOpenCLContext import RPyOpenCLContext
 import logging
+from typing import Callable, Any
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(module)s - %(message)s')
 
@@ -84,10 +85,10 @@ class RPyOpenCLService(Service):
 
         return self._get_context(context_id).get_device_info()
 
-    def exposed_create_input_buffer(self, context_id: str, local_object: any) -> None:
+    def exposed_create_input_buffer(self, context_id: str, local_object: Any) -> None:
 
         local_object = rpyc.classic.obtain(local_object)
-        logging.debug("cast np to remove netref", type(local_object))
+        logging.debug("cast np to remove netref: {}".format(type(local_object)))
         if type(local_object) == np.ndarray:
             local_object = np.array(local_object)
 
@@ -107,4 +108,9 @@ class RPyOpenCLService(Service):
 
     def exposed_delete_context(self, context_id: str) -> None:
         if context_id in RPyOpenCLService.contexts:
+            logging.debug("Removing context {}".format(context_id))
             del RPyOpenCLService.contexts[context_id]
+
+    def exposed_set_callback(self, context_id: str, cb: Callable) -> None:
+        logging.debug("Received remote callback: {}, {}".format(cb, type(cb)))
+        self._get_context(context_id).set_callback(cb)       

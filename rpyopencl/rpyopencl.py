@@ -1,16 +1,18 @@
 import rpyc
 import numpy as np
 import logging
+from typing import Callable, Any
 
-logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(module)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(module)s - %(message)s')
 RPYC_CFG = {"allow_all_attrs": True, "allow_pickle": True, "allow_public_attrs": True}
 
 class ClusterContext():
 
-    def __init__(self, nodes: dict):
+    def __init__(self, nodes: dict, use_async : bool = False):
 
         self.context_nodes = nodes
         self.output_buffers_nb = 0
+        self.use_async = use_async
 
         for node in self.context_nodes.values():
             try:
@@ -25,7 +27,7 @@ class ClusterContext():
         for node in self.context_nodes.values():
             node.compile_kernel(kernel, use_prefered_vector_size)
 
-    def create_input_buffer(self, local_object: any):
+    def create_input_buffer(self, local_object: Any):
 
         if type(local_object) is np.ndarray:
             logging.debug("Splitting input array")
@@ -54,21 +56,43 @@ class ClusterContext():
         # context_work_size = work_size // divider)
         logging.debug("worksize: {}, nodes: {}, context_work_size: {}".format(work_size, divider, context_work_size))
         logging.debug("output buffers: {}".format(self.output_buffers_nb))
-
-        #FIXME: how to // this execution and concatenate the results correctly?
         
         res_per_buffer = []
         res = []
         for output in range(self.output_buffers_nb):
             res_per_buffer.append([])
 
-        for node in self.context_nodes.values():
-            sub_res = node.execute_kernel(kernel_name, context_work_size, wait_execution=True)
-            for output in range(self.output_buffers_nb):
-                output_res = sub_res[output]
-                logging.debug("Got sub result from node {} on output {} of size {}".format(node.node_name, output, output_res.shape))
-                res_per_buffer[output].append(output_res)
+        if not self.use_async:
+            for node in self.context_nodes.values():
+                sub_res = node.execute_kernel(kernel_name, context_work_size, wait_execution=True)
+                for output in range(self.output_buffers_nb):
+                    output_res = sub_res[output]
+                    logging.debug("Got sub result from node {} on output {} of size {}".format(node.node_name, output, output_res.shape))
+                    res_per_buffer[output].append(output_res)
+        else:
+            #FIXME: how to // this execution and concatenate the results correctly?
 
+            statuses = []
+            for node in self.context_nodes.values():
+                statuses.append(node.execute_kernel(kernel_name, context_work_size, wait_execution=True))
+            
+            logging.debug("{} statuses are now wating to be completed".format(len(statuses)))
+
+            #FIXME, there is no guarantee the order will be kept so, this code doesn't work as it is
+            while statuses:
+                for status in statuses:
+                    if status.ready:
+                        for output in range(self.output_buffers_nb):
+                            sub_res = np.array(status.value)
+                            output_res = sub_res[output]
+                            logging.debug("Got sub result on output {} of size {}".format(output, output_res.shape))
+                            res_per_buffer[output].append(output_res)
+
+                        statuses.remove(status)
+                        logging.debug("One status completed, remaining: {}".format(len(statuses)))
+
+
+        logging.debug("Got all results, aggregating them")
         for output in range(self.output_buffers_nb):
             logging.debug("Concatenate results of shape {} for output {}".format(len(res_per_buffer[output]), output))
             res_agg = np.concatenate(res_per_buffer[output], axis=None)
@@ -90,10 +114,11 @@ class ClusterContext():
 
 class Node():
 
-    def __init__(self, ip, name):
+    def __init__(self, ip, name, use_async=False):
 
         try:
             logging.debug("Connecting to node {} at {}".format(name, ip))
+
             self._conn = rpyc.connect(ip, 18861, config=RPYC_CFG)
             self.cluster_cl = self._conn.root
             self.platforms = dict(self.cluster_cl.get_platforms())
@@ -104,6 +129,13 @@ class Node():
         
         self.context = None
         self.node_name = name
+        self.ip = ip
+        self.use_async = use_async
+
+        # if use_async:
+        #     self._execute_kernel = rpyc.async_(self.cluster_cl.execute_kernel)
+        # else:
+        #     self._execute_kernel = self.cluster_cl.execute_kernel
 
     def get_platforms(self) -> dict:
         return {
@@ -143,7 +175,7 @@ class Node():
 
         self.cluster_cl.compile_kernel(self.context, kernel, use_prefered_vector_size=use_prefered_vector_size)
 
-    def create_input_buffer(self, local_object: any) -> None:
+    def create_input_buffer(self, local_object: Any) -> None:
         if self.context is None:
             raise ValueError("No context created!")
 
@@ -154,13 +186,18 @@ class Node():
             raise ValueError("No context created!")
 
         self.cluster_cl.create_output_buffer(self.context, object_type=object_type, shape=object_shape)
-    
+
     def execute_kernel(self, kernel_name : str, work_size: tuple, wait_execution: bool = True) -> np.array:
 
         if type(work_size) != tuple:
             raise ValueError("work_size has to be a tuple")
 
-        return np.array(self.cluster_cl.execute_kernel(self.context, kernel_name, work_size, wait_execution))
+        if self.use_async:
+            print("Executing asynchronously the kernel")
+            _execute_kernel = rpyc.async_(self.cluster_cl.execute_kernel)
+            return _execute_kernel(self.context, kernel_name, work_size, wait_execution)
+        else:
+            return np.array(self.cluster_cl.execute_kernel(self.context, kernel_name, work_size, wait_execution))
 
     def delete_context(self) -> None:
         self.cluster_cl.delete_context(self.context)
@@ -168,16 +205,20 @@ class Node():
     def disconnect(self) -> None:
         self._conn.close()
 
+    def set_callback(self, cb: Callable) -> None:
+        self.cluster_cl.set_callback(self.context, cb)
+
 class RPyOpenCLCluster():
 
     # nodes = [ {"name": "rpi1", "ip": "localhost"} ]
 
-    def __init__(self, nodes: []):
+    def __init__(self, nodes: [], use_async : bool = False):
 
         self.nodes = {}
+        self.use_async = use_async
         for node in nodes:
             try:
-                self.nodes[node['name']] = Node(ip=node['ip'], name=node['name'])
+                self.nodes[node['name']] = Node(ip=node['ip'], name=node['name'], use_async=use_async)
             except RuntimeError as e:
                 logging.warning("Forgetting node: {} due to: {}".format(node, e))
 
@@ -210,13 +251,19 @@ class RPyOpenCLCluster():
 
     def create_cluster_context(self) -> ClusterContext:
 
-        cluster_context = ClusterContext(self.nodes)
+        cluster_context = ClusterContext(self.nodes, use_async=self.use_async)
         return cluster_context
 
     def delete_cluster_context(self, cluster_context) -> None:
 
         cluster_context._delete_context()
         cluster_context = None
+
+    def disconnect_cluster_context(self, cluster_context) -> None:
+
+        cluster_context.disconnect()
+
+
 
 
 

@@ -7,8 +7,10 @@ import numpy as np
 import rpyc
 import uuid
 import logging
+from typing import Callable, Any
+import traceback 
 
-logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(module)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(module)s - %(message)s')
 
 class RPyOpenCLContext():
 
@@ -122,11 +124,11 @@ class RPyOpenCLContext():
         object_type = rpyc.classic.obtain(object_type)
         shape = rpyc.classic.obtain(shape)
 
-        logging.debug("Creating output buffer of shape {}",format(shape))
-        logging.debug("Creating output buffer of type {}",format(str(object_type)))
+        logging.debug("Creating output buffer of shape {}".format(shape))
+        logging.debug("Creating output buffer of type {}".format(str(object_type)))
 
         destbuf = np.zeros(shape).astype(object_type)
-        logging.debug(destbuf.shape, type(destbuf), destbuf, destbuf.nbytes)
+        #logging.debug(destbuf.shape, type(destbuf), destbuf, destbuf.nbytes)
 
         buffer = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, destbuf.nbytes)
         self.output_buffers.append(buffer)
@@ -155,48 +157,75 @@ class RPyOpenCLContext():
     def execute_kernel(self, kernel_name: str, work_size: tuple, wait_execution: bool = True):
 
         for kernel in self.prg.all_kernels():
+            logging.debug("Kernel available: {}".format(kernel.get_info(cl.kernel_info.FUNCTION_NAME)))
             if kernel.get_info(cl.kernel_info.FUNCTION_NAME) == kernel_name:
     
-                if kernel.get_info(cl.kernel_info.NUM_ARGS) != len(self.input_buffers) + len(self.output_buffers):
-                    raise ValueError("Kernel function args number ({}) is different from input and ouput buffers ({})".format(kernel.get_info(cl.kernel_info.NUM_ARGS), len(self.input_buffers)))
+                try:
+                    if kernel.get_info(cl.kernel_info.NUM_ARGS) != len(self.input_buffers) + len(self.output_buffers):
+                        raise ValueError("Kernel function args number ({}) is different from input and ouput buffers ({})".format(kernel.get_info(cl.kernel_info.NUM_ARGS), len(self.input_buffers)))
 
-                logging.debug("Setting args")
-                logging.debug(self.input_buffers)
-                logging.debug(self.output_buffers)
+                    logging.debug("Setting args")
+                    logging.debug(self.input_buffers)
+                    logging.debug(self.output_buffers)
 
-                kernel.set_args(*self.input_buffers, *self.output_buffers)
+                    kernel.set_args(*self.input_buffers, *self.output_buffers)
 
-                local_work_size = None
-                divider = 1
-                if self.use_prefered_vector_size is not None:
-                    divider = self.preferred_vector_size[self.use_prefered_vector_size]
-                    
-                global_work_size = tuple(dim//divider for dim in work_size)
-                # global_work_size = work_size//divider
+                    local_work_size = None
+                    divider = 1
+                    if self.use_prefered_vector_size is not None:
+                        divider = self.preferred_vector_size[self.use_prefered_vector_size]
+                        
+                    global_work_size = tuple(dim//divider for dim in work_size)
+                    # global_work_size = work_size//divider
 
-                logging.debug("work_size: {}, global_work_size: {}, divider: {}".format(work_size, global_work_size, divider))
-                self.enqueue_event = cl.enqueue_nd_range_kernel(
-                    queue=self.queue, 
-                    kernel=kernel, 
-                    global_work_size=global_work_size, 
-                    local_work_size=local_work_size)
+                    logging.debug("work_size: {}, global_work_size: {}, divider: {}".format(work_size, global_work_size, divider))
+                    self.enqueue_event = cl.enqueue_nd_range_kernel(
+                        queue=self.queue, 
+                        kernel=kernel, 
+                        global_work_size=global_work_size, 
+                        local_work_size=local_work_size)
 
-                if wait_execution:
-                    self.enqueue_event.wait()
+                    if wait_execution:
+                        self.enqueue_event.wait()
 
-                    logging.debug("enqueue from", self.output_buffers, "to", self.output_arrays)
-                    for array, buffer in zip(self.output_arrays, self.output_buffers):
-                        cl.enqueue_copy(self.queue, array, buffer)
+                        logging.debug("enqueue from {} to {}".format(self.output_buffers, self.output_arrays))
+                        for array, buffer in zip(self.output_arrays, self.output_buffers):
+                            cl.enqueue_copy(self.queue, array, buffer)
 
-                    logging.debug("Return local arrays: {}".format(self.output_arrays))
-                    return self.output_arrays
+                        logging.debug("Return local arrays: {}".format(self.output_arrays))
+                        return self.output_arrays
+                    else:
+                        logging.debug("Adding callback on COMPLETE event")
+                        self.enqueue_event.set_callback(cl.command_execution_status.COMPLETE, self.copy_on_callback)
+                        return None
+                        
+                except Exception as e:
+                    traceback.print_exc()
+                    raise RuntimeError("Unexpected error", e)
+
+                # kernel found, done!
                 break
 
         raise RuntimeError("Kernel {} not found".format(kernel_name))            
 
-    def copy_on_callback(self):
-        for array, buffer in zip(self.output_arrays, self.output_buffers):
-            cl.enqueue_copy(self.queue, array, buffer)
+    def copy_on_callback(self, status):
 
-        logging.debug("Return local arrays: {}".format(self.output_arrays))
-        return self.output_arrays
+        try:
+            if self.callback is None:
+                raise RuntimeError("Remote callback is not set!")
+
+            logging.debug("On callback for event {}, enqueue from {} to {}".format(status, self.output_buffers, self.output_arrays)) 
+            for array, buffer in zip(self.output_arrays, self.output_buffers):
+                cl.enqueue_copy(self.queue, array, buffer)
+
+            logging.debug("Call remote callback {} with results".format(type(self.callback)))
+            self.callback(self.output_arrays)
+
+        except Exception as e:
+            traceback.print_exc()
+            raise RuntimeError("Unexpected error on callback", e)            
+
+    def set_callback(self, cb):
+
+        logging.debug("Callback set to {}".format(cb))
+        self.callback = cb

@@ -5,30 +5,21 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from rpyopencl import RPyOpenCLCluster
 import json
 import numpy as np
-import time
-
-import functools
-import time
-
-def timer(func):
-    """Print the runtime of the decorated function"""
-    @functools.wraps(func)
-    def wrapper_timer(*args, **kwargs):
-        start_time = time.process_time_ns() 
-        value = func(*args, **kwargs)
-        end_time = time.process_time_ns()      
-        run_time = end_time - start_time
-        run_time = (end_time - start_time)/10e6
-        print(f"Finished {func.__name__!r} in {run_time:.4f} ms")
-        return value
-    return wrapper_timer
+from decorators import timer
 
 # Globals to simplify sample tuning
 object_type = np.float32
 size = 50000
+kernel_name = "sum"
 a_np = np.random.rand(size).astype(object_type)
 b_np = np.random.rand(size).astype(object_type)
 nodes = [ {"name": "rpi-opencl1", "ip": "localhost"}, {"name": "rpi-opencl2", "ip": "localhost"}  ]
+res_cl = None
+
+def callback(res):
+    print("Callback called!")
+    print(res)
+    res_cl = np.array(res)
 
 @timer
 def compute_on_one_node(node, kernel):
@@ -50,16 +41,14 @@ def compute_on_one_node(node, kernel):
     node.create_input_buffer(a_np)
     node.create_input_buffer(b_np)
 
-    print("Create 2 output buffers of size {} and type {}".format(object_type, a_np.shape))
+    print("Create 1 output buffer of size {} and type {}".format(object_type, a_np.shape))
     node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
+
+    print("Set remote callback")
+    node.set_callback(callback)
 
     print("Executing the Kernel")
-    res_np_arrays = node.execute_kernel("sum", (size,), True)
-
-    node.delete_context()
-
-    return res_np_arrays
+    res_np_arrays = node.execute_kernel(kernel_name, (size,), False)
 
 @timer
 def compute_on_cluster(cluster, kernel):
@@ -74,12 +63,11 @@ def compute_on_cluster(cluster, kernel):
     cl_context.create_input_buffer(local_object=a_np)
     cl_context.create_input_buffer(local_object=b_np)
 
-    print("Create 2 output buffers of size {} and type {}".format(type(a_np), a_np.shape))
-    cl_context.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
+    print("Create 1 output buffer of size {} and type {}".format(type(a_np), a_np.shape))
     cl_context.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
 
     print("Executing the Kernel")
-    res_cl_np_arrays = cl_context.execute_kernel("sum", (size, ))
+    res_cl_np_arrays = cl_context.execute_kernel(kernel_name, (size, ))
 
     return res_cl_np_arrays
 
@@ -91,17 +79,11 @@ def compare_results(res_cl):
     print("Norm", np.linalg.norm(res_sum_np - (a_np + b_np)))
     assert np.allclose(res_sum_np, a_np + b_np)
 
-    res_mul_np = np.array(res_cl[1])
-    print("Result mul", res_mul_np)
-    print("Difference:", res_mul_np - (a_np * b_np))
-    print("Norm", np.linalg.norm(res_mul_np - (a_np * b_np)))
-    assert np.allclose(res_mul_np, a_np * b_np)
-
 if __name__ == "__main__":
 
     print("Reading the kernel using preferred vector size")
 
-    with open("kernels/sum_mul.cl", "r") as kernel_file:
+    with open("kernels/{}.cl".format(kernel_name), "r") as kernel_file:
         kernel = kernel_file.read()
 
     print("Create Cluster")
@@ -118,15 +100,22 @@ if __name__ == "__main__":
     for platform in node1_platforms.values():
         print(json.dumps(platform, indent=4, sort_keys=True))
 
-    res_cl = compute_on_one_node(node1, kernel)
+    compute_on_one_node(node1, kernel)
+    
+    print("Waiting for results")
+    while res_cl is None:
+        time.sleep(0.1)
+    
+    print("Comparing results")   
     compare_results(res_cl)
+    node1.delete_context()
 
     res_cl = compute_on_cluster(cluster, kernel)
     compare_results(res_cl)
 
     node1.disconnect()
 
-    cluster.delete_cluster_context(cl_context)
-    cluster.disconnect()    
+    # cluster.delete_cluster_context(cl_context)
+    # cluster.disconnect()    
 
     

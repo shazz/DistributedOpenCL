@@ -1,4 +1,4 @@
-__kernel void sum(
+__kernel void sum_mul(
     __global const float<VECSIZE> *a_g, __global const float<VECSIZE> *b_g, 
     __global float<VECSIZE>  *res_add, __global float<VECSIZE> *res_mul)
 {

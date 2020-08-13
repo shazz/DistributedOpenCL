@@ -7,23 +7,7 @@ import json
 import numpy as np
 from PIL import Image
 import logging
-import functools
-import time
-
-logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(module)s - %(message)s')
-
-def timer(func):
-    """Print the runtime of the decorated function"""
-    @functools.wraps(func)
-    def wrapper_timer(*args, **kwargs):
-        start_time = time.process_time_ns()  
-        value = func(*args, **kwargs)
-        end_time = time.process_time_ns()   
-        run_time = (end_time - start_time)/10e6
-        print(f"Finished {func.__name__!r} in {run_time:.4f} ms")
-        return value
-    return wrapper_timer
-
+from decorators import timer
 
 @timer 
 def setup_opencl_kernel():
