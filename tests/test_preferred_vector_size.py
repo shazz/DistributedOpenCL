@@ -2,9 +2,14 @@ import pytest
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../node')))
 
 from rpyopencl import RPyOpenCLCluster
 import numpy as np
+from unittest import TestCase
+
+from rpyc.utils.server import OneShotServer
+from rpyopencl_service import RPyOpenCLService
 
 kernel_template = """
 __kernel void sum_mul(
@@ -30,8 +35,8 @@ __kernel void sum_mul(
 
 kernel_no_template_optimized = """
 __kernel void sum_mul(
-    __global const float8 *a_g, __global const float8 *b_g, 
-    __global float8 *res_add, __global float8 *res_mul)
+    __global const float4 *a_g, __global const float4 *b_g, 
+    __global float4 *res_add, __global float4 *res_mul)
 {
   int gid = get_global_id(0);
   res_add[gid] = a_g[gid] + b_g[gid];
@@ -39,136 +44,282 @@ __kernel void sum_mul(
 }
 """
 
-@pytest.fixture
-def setup_opencl_node_no_template():
 
-    nodes = [ {"name": "pytest", "ip": "localhost"} ]
+class CommonTest(TestCase):
 
-    cluster = RPyOpenCLCluster(nodes, use_async=False)
-    node = cluster.get_node("pytest")
+    def setUp(self):
+        RPYC_CFG = {"allow_all_attrs": True, "allow_pickle": True, "allow_public_attrs": True}
+        self.server = OneShotServer(RPyOpenCLService, port=18861, auto_register=False, protocol_config=RPYC_CFG)
+        self.server.logger.quiet = False
+        self.server._start_in_thread()
 
-    object_type = np.float32
-    size = 16
-    kernel_name = "sum_mul"
-    a_np = np.random.rand(size).astype(object_type)
-    b_np = np.random.rand(size).astype(object_type)
+        print("OneShotServer started!")
 
-    return node, a_np, b_np, kernel_no_template, kernel_name, size, object_type
+        nodes = [ {"name": "pytest", "ip": "localhost"} ]
+        cluster = RPyOpenCLCluster(nodes, use_async=False)
+        self.node = cluster.get_node("pytest")
 
-@pytest.fixture
-def setup_opencl_node_template():
+        print("Opencl node ready!")
 
-    nodes = [ {"name": "pytest", "ip": "localhost"} ]
+    def tearDown(self):
+        self.server.close()
 
-    cluster = RPyOpenCLCluster(nodes, use_async=False)
-    node = cluster.get_node("pytest")
+class TestNoUseWithoutTemplate(CommonTest):
 
-    object_type = np.float32
-    size = 16
-    kernel_name = "sum_mul"
-    a_np = np.random.rand(size).astype(object_type)
-    b_np = np.random.rand(size).astype(object_type)
+    @pytest.fixture(autouse=True)
+    def setup_opencl(self):
 
-    return node, a_np, b_np, kernel_template, kernel_name, size, object_type
+        self.object_type = np.float32
+        self.size = 16
+        self.kernel_name = "sum_mul"
+        self.a_np = np.random.rand(self.size).astype(self.object_type)
+        self.b_np = np.random.rand(self.size).astype(self.object_type)
+        self.kernel = kernel_no_template
 
-@pytest.fixture
-def setup_opencl_node_template_no_int_divide():
+    def test_preferred_vector_size(self):
 
-    nodes = [ {"name": "pytest", "ip": "localhost"} ]
+        self.node.create_context()
+        self.node.add_command_queue()
+        self.node.compile_kernel(self.kernel, use_prefered_vector_size=None)
+        self.node.create_input_buffer(self.a_np)
+        self.node.create_input_buffer(self.b_np)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
 
-    cluster = RPyOpenCLCluster(nodes, use_async=False)
-    node = cluster.get_node("pytest")
+        res_array = np.array(self.node.execute_kernel(self.kernel_name, (self.size,), True))
 
-    object_type = np.float32
-    size = 17
-    kernel_name = "sum_mul"
-    a_np = np.random.rand(size).astype(object_type)
-    b_np = np.random.rand(size).astype(object_type)
+        print("Difference:", res_array[0] - (self.a_np + self.b_np))
+        assert np.allclose(res_array[0], self.a_np + self.b_np)
+        assert np.allclose(res_array[1], self.a_np * self.b_np)            
 
-    return node, a_np, b_np, kernel_template, kernel_name, size, object_type      
+class TestNoUseWithTemplate(CommonTest):
 
-def test_no_use_without_template(setup_opencl_node_no_template):
+    @pytest.fixture(autouse=True)
+    def setup_opencl(self):
 
-    node, a_np, b_np, kernel, kernel_name, size, object_type = setup_opencl_node_no_template
-    node.create_context()
-    node.add_command_queue()
-    node.compile_kernel(kernel, use_prefered_vector_size=None)
-    node.create_input_buffer(a_np)
-    node.create_input_buffer(b_np)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
+        self.object_type = np.float32
+        self.size = 16
+        self.kernel_name = "sum_mul"
+        self.a_np = np.random.rand(self.size).astype(self.object_type)
+        self.b_np = np.random.rand(self.size).astype(self.object_type)
+        self.kernel = kernel_template
 
-    res_array = np.array(node.execute_kernel(kernel_name, (size,), True))
+    def test_preferred_vector_size(self):
 
-    print(res_array)
-    assert np.allclose(res_array[0], a_np + b_np)
-    assert np.allclose(res_array[1], a_np * b_np)    
+        self.node.create_context()
+        self.node.add_command_queue()
+        self.node.compile_kernel(self.kernel, use_prefered_vector_size=None)
+        self.node.create_input_buffer(self.a_np)
+        self.node.create_input_buffer(self.b_np)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
 
-def test_no_use_with_template(setup_opencl_node_template):
+        res_array = np.array(self.node.execute_kernel(self.kernel_name, (self.size,), True))
 
-    node, a_np, b_np, kernel, kernel_name, size, object_type = setup_opencl_node_template
-    node.create_context()
-    node.add_command_queue()
-    node.compile_kernel(kernel, use_prefered_vector_size=None)
-    node.create_input_buffer(a_np)
-    node.create_input_buffer(b_np)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
+        print("Difference:", res_array[0] - (self.a_np + self.b_np))
+        assert np.allclose(res_array[0], self.a_np + self.b_np)
+        assert np.allclose(res_array[1], self.a_np * self.b_np)      
 
-    res_array = np.array(node.execute_kernel(kernel_name, (size,), True))
+class TestNoUseWithoutTemplateNoDivisible(CommonTest):
 
-    print("Difference:", res_array[0] - (a_np + b_np))
-    assert np.allclose(res_array[0], a_np + b_np)
-    assert np.allclose(res_array[1], a_np * b_np)
+    @pytest.fixture(autouse=True)
+    def setup_opencl(self):
 
-def test_no_use_with_template_no_int_divide(setup_opencl_node_template_no_int_divide):
+        self.object_type = np.float32
+        self.size = 17
+        self.kernel_name = "sum_mul"
+        self.a_np = np.random.rand(self.size).astype(self.object_type)
+        self.b_np = np.random.rand(self.size).astype(self.object_type)
+        self.kernel = kernel_no_template
 
-    node, a_np, b_np, kernel, kernel_name, size, object_type = setup_opencl_node_template_no_int_divide
-    node.create_context()
-    node.add_command_queue()
-    node.compile_kernel(kernel, use_prefered_vector_size=None)
-    node.create_input_buffer(a_np)
-    node.create_input_buffer(b_np)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
+    def test_preferred_vector_size(self):
 
-    res_array = np.array(node.execute_kernel(kernel_name, (size,), True))
+        self.node.create_context()
+        self.node.add_command_queue()
+        self.node.compile_kernel(self.kernel, use_prefered_vector_size=None)
+        self.node.create_input_buffer(self.a_np)
+        self.node.create_input_buffer(self.b_np)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
 
-    print("Difference:", res_array[0] - (a_np + b_np))
-    assert np.allclose(res_array[0], a_np + b_np)
-    assert np.allclose(res_array[1], a_np * b_np)
+        # with pytest.raises(RuntimeError):
+        res_array = np.array(self.node.execute_kernel(self.kernel_name, (self.size,), True))
 
-def test_use_with_template(setup_opencl_node_template):
+        print("Difference:", res_array[0] - (self.a_np + self.b_np))
+        assert np.allclose(res_array[0], self.a_np + self.b_np)
+        assert np.allclose(res_array[1], self.a_np * self.b_np)   
 
-    node, a_np, b_np, kernel, kernel_name, size, object_type = setup_opencl_node_template
-    node.create_context()
-    node.add_command_queue()
-    node.compile_kernel(kernel, use_prefered_vector_size="float")
-    node.create_input_buffer(a_np)
-    node.create_input_buffer(b_np)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
+class TestNoUseWithTemplateNoDivisible(CommonTest):
 
-    res_array = np.array(node.execute_kernel(kernel_name, (size,), True))
+    @pytest.fixture(autouse=True)
+    def setup_opencl(self):
 
-    print("Difference:", res_array[0] - (a_np + b_np))
-    assert np.allclose(res_array[0], a_np + b_np)
-    assert np.allclose(res_array[1], a_np * b_np)     
+        self.object_type = np.float32
+        self.size = 17
+        self.kernel_name = "sum_mul"
+        self.a_np = np.random.rand(self.size).astype(self.object_type)
+        self.b_np = np.random.rand(self.size).astype(self.object_type)
+        self.kernel = kernel_template
 
-def test_use_with_template_no_int_divide(setup_opencl_node_template_no_int_divide):
+    def test_preferred_vector_size(self):
 
-    node, a_np, b_np, kernel, kernel_name, size, object_type = setup_opencl_node_template_no_int_divide
-    node.create_context()
-    node.add_command_queue()
-    node.compile_kernel(kernel, use_prefered_vector_size="float")
-    node.create_input_buffer(a_np)
-    node.create_input_buffer(b_np)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
+        self.node.create_context()
+        self.node.add_command_queue()
+        self.node.compile_kernel(self.kernel, use_prefered_vector_size=None)
+        self.node.create_input_buffer(self.a_np)
+        self.node.create_input_buffer(self.b_np)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
 
-    with pytest.raises(RuntimeError):
-        res_array = np.array(node.execute_kernel(kernel_name, (size,), True))
+        # with pytest.raises(RuntimeError):
+        res_array = np.array(self.node.execute_kernel(self.kernel_name, (self.size,), True))
 
-        print("Difference:", res_array[0] - (a_np + b_np))
-        assert np.allclose(res_array[0], a_np + b_np)
-        assert np.allclose(res_array[1], a_np * b_np)     
+        print("Difference:", res_array[0] - (self.a_np + self.b_np))
+        assert np.allclose(res_array[0], self.a_np + self.b_np)
+        assert np.allclose(res_array[1], self.a_np * self.b_np)     
+
+class TestUseWithTemplateNoDivisible(CommonTest):
+
+    @pytest.fixture(autouse=True)
+    def setup_opencl(self):
+
+        self.object_type = np.float32
+        self.size = 17
+        self.kernel_name = "sum_mul"
+        self.a_np = np.random.rand(self.size).astype(self.object_type)
+        self.b_np = np.random.rand(self.size).astype(self.object_type)
+        self.kernel = kernel_template
+
+    def test_preferred_vector_size(self):
+
+        self.node.create_context()
+        self.node.add_command_queue()
+        self.node.compile_kernel(self.kernel, use_prefered_vector_size="float")
+        self.node.create_input_buffer(self.a_np)
+        self.node.create_input_buffer(self.b_np)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+
+        with pytest.raises(RuntimeError):
+            res_array = np.array(self.node.execute_kernel(self.kernel_name, (self.size,), True))
+
+            print("Difference:", res_array[0] - (self.a_np + self.b_np))
+            assert np.allclose(res_array[0], self.a_np + self.b_np)
+            assert np.allclose(res_array[1], self.a_np * self.b_np)    
+
+class TestUseWithoutTemplateNoDivisible(CommonTest):
+
+    @pytest.fixture(autouse=True)
+    def setup_opencl(self):
+
+        self.object_type = np.float32
+        self.size = 17
+        self.kernel_name = "sum_mul"
+        self.a_np = np.random.rand(self.size).astype(self.object_type)
+        self.b_np = np.random.rand(self.size).astype(self.object_type)
+        self.kernel = kernel_template
+
+    def test_preferred_vector_size(self):
+
+        self.node.create_context()
+        self.node.add_command_queue()
+        self.node.compile_kernel(self.kernel, use_prefered_vector_size="float")
+        self.node.create_input_buffer(self.a_np)
+        self.node.create_input_buffer(self.b_np)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+
+        with pytest.raises(RuntimeError):
+            res_array = np.array(self.node.execute_kernel(self.kernel_name, (self.size,), True))
+
+            print("Difference:", res_array[0] - (self.a_np + self.b_np))
+            assert np.allclose(res_array[0], self.a_np + self.b_np)
+            assert np.allclose(res_array[1], self.a_np * self.b_np)    
+
+class TestUseOptimizedNoDivisible(CommonTest):
+
+    @pytest.fixture(autouse=True)
+    def setup_opencl(self):
+
+        self.object_type = np.float32
+        self.size = 17
+        self.kernel_name = "sum_mul"
+        self.a_np = np.random.rand(self.size).astype(self.object_type)
+        self.b_np = np.random.rand(self.size).astype(self.object_type)
+        self.kernel = kernel_no_template_optimized
+
+    def test_preferred_vector_size(self):
+
+        self.node.create_context()
+        self.node.add_command_queue()
+        self.node.compile_kernel(self.kernel, use_prefered_vector_size="float")
+        self.node.create_input_buffer(self.a_np)
+        self.node.create_input_buffer(self.b_np)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+
+        res_array = np.array(self.node.execute_kernel(self.kernel_name, (self.size // 4,), True))
+
+        print("Difference:", res_array[0] - (self.a_np + self.b_np))
+        assert not np.allclose(res_array[0], self.a_np + self.b_np)
+        assert not np.allclose(res_array[1], self.a_np * self.b_np)   
+
+class TestNoUseOptimized(CommonTest):
+
+    @pytest.fixture(autouse=True)
+    def setup_opencl_node_optimized(self):
+
+        self.object_type = np.float32
+        self.size = 16
+        self.kernel_name = "sum_mul"
+        self.a_np = np.random.rand(self.size).astype(self.object_type)
+        self.b_np = np.random.rand(self.size).astype(self.object_type)
+        self.kernel = kernel_no_template_optimized
+
+    def test_preferred_vector_size(self):
+
+        self.node.create_context()
+        self.node.add_command_queue()
+        self.node.compile_kernel(self.kernel, use_prefered_vector_size=None)
+        self.node.create_input_buffer(self.a_np)
+        self.node.create_input_buffer(self.b_np)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+
+        res_array = np.array(self.node.execute_kernel(self.kernel_name, (self.size // 4,), True))
+
+        print("Difference:", res_array[0] - (self.a_np + self.b_np))
+        assert np.allclose(res_array[0], self.a_np + self.b_np)
+        assert np.allclose(res_array[1], self.a_np * self.b_np)     
+      
+class TestNoUseOptimizedNoDivide(CommonTest):
+
+    # WARNING!!!! This test will not pass even as the result is wrong! kernel conception issue!
+    # There is no easy way to spot this conception issue unless checking the kernel input type
+
+    @pytest.fixture(autouse=True)
+    def setup_opencl(self):
+
+        self.object_type = np.float32
+        self.size = 17
+        self.kernel_name = "sum_mul"
+        self.a_np = np.random.rand(self.size).astype(self.object_type)
+        self.b_np = np.random.rand(self.size).astype(self.object_type)
+        self.kernel = kernel_no_template_optimized
+
+    def test_preferred_vector_size(self):
+
+        self.node.create_context()
+        self.node.add_command_queue()
+        self.node.compile_kernel(self.kernel, use_prefered_vector_size=None)
+        self.node.create_input_buffer(self.a_np)
+        self.node.create_input_buffer(self.b_np)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+        self.node.create_output_buffer(object_type=self.object_type, object_shape=self.a_np.shape)
+
+        res_array = np.array(self.node.execute_kernel(self.kernel_name, (self.size // 4,), True))
+
+        print("Difference:", res_array[0] - (self.a_np + self.b_np))
+        assert not np.allclose(res_array[0], self.a_np + self.b_np)
+        assert not np.allclose(res_array[1], self.a_np * self.b_np)          
+
