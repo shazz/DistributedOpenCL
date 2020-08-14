@@ -2,3 +2,4 @@ numpy
 pyopencl
 pillow
 rpyc
+pytest

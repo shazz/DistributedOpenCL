@@ -5,13 +5,13 @@ A PoC of distributed OpenCL on a Raspberry Pi 3 cluster
 
  1. Follow the requirements and configration below
 
- 1. On one slave node of the cluster run:
+ 1. On one or many slave nodes of the cluster run:
  ```bash
  cd node
  sudo python3 service.py
  ```
 
- 1. on the master node of the cluster run:
+ 1. on the master node (which could be also a slave node) of the cluster run:
  ```bash
  cd samples
  python3 app_<SAMPLE_NAME>.py
@@ -76,19 +76,6 @@ On each node of the cluster, run:
 - `sudo apt-get install libatlas-base-dev`
 - `sudo apt-get install python3-pip`
 - `sudo pip3 install pyopencl rpyc`
-
-### Start the nodes
-On each node of the cluster, run:
-- copy the `node` folder
-- `cd node`
-- `sudo python3 opencl_node.py`
-
-### Start the cluster host
-On any 3rd party computer or any node, run:
-- copy the `cluster_host` folder
-- `pip3 install rpyc numpy` if on a 3rd party computer
-- `cd cluster_host`
-- `python3 demo_cluster.py`
 
 ### How to install dependencies?
 

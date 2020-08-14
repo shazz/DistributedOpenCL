@@ -70,26 +70,28 @@ class ClusterContext():
                     logging.debug("Got sub result from node {} on output {} of size {}".format(node.node_name, output, output_res.shape))
                     res_per_buffer[output].append(output_res)
         else:
-            #FIXME: how to // this execution and concatenate the results correctly?
-
-            statuses = []
+            statuses = {}
+            results = {}
             for node in self.context_nodes.values():
-                statuses.append(node.execute_kernel(kernel_name, context_work_size, wait_execution=True))
+                statuses[node.node_name] = node.execute_kernel(kernel_name, context_work_size, wait_execution=True)
             
             logging.debug("{} statuses are now wating to be completed".format(len(statuses)))
 
             #FIXME, there is no guarantee the order will be kept so, this code doesn't work as it is
             while statuses:
-                for status in statuses:
+                for node in statuses.keys():
+                    status = statuses[node]
                     if status.ready:
+                        sub_res = np.array(status.value)
+                        results[node] = { }
                         for output in range(self.output_buffers_nb):
-                            sub_res = np.array(status.value)
-                            output_res = sub_res[output]
-                            logging.debug("Got sub result on output {} of size {}".format(output, output_res.shape))
-                            res_per_buffer[output].append(output_res)
+                            results[node][output] = sub_res[output]
 
-                        statuses.remove(status)
+                        statuses = dict((k,v) for k,v in statuses.items() if k!=node)
                         logging.debug("One status completed, remaining: {}".format(len(statuses)))
+
+            for output in range(self.output_buffers_nb):
+                res_per_buffer[output] = [results[node][output] for node in sorted(results.keys())]
 
 
         logging.debug("Got all results, aggregating them")

@@ -63,6 +63,7 @@ class RPyOpenCLContext():
             "float": self.device.preferred_vector_width_float,
             "double": self.device.preferred_vector_width_double
         }
+        self.use_prefered_vector_size = None
 
     def get_device_info(self):
 
@@ -135,6 +136,7 @@ class RPyOpenCLContext():
         self.output_list.append(destbuf)
 
     def compile_kernel(self, kernel : str, use_prefered_vector_size : str):
+
         if use_prefered_vector_size not in [None, 'char', 'short', 'int', 'long', 'half', 'float', 'double']:
             raise ValueError("Unknown vector size: {}".format(use_prefered_vector_size))
         
@@ -146,10 +148,13 @@ class RPyOpenCLContext():
                 if self.preferred_vector_size[use_prefered_vector_size] != 0:
                     logging.debug("patching kernel to use prefered vector size")
                     kernel = kernel.replace('<VECSIZE>', str(self.preferred_vector_size[use_prefered_vector_size]))
-                    logging.debug(kernel)
                     self.use_prefered_vector_size = use_prefered_vector_size
                 else:
                     raise RuntimeError("This device doesn't support this type: {}".format(use_prefered_vector_size))
+        else:
+            if '<VECSIZE>' in kernel:
+                kernel = kernel.replace('<VECSIZE>', '')
+        logging.debug(kernel)
 
         self.prg = cl.Program(self.ctx, kernel)
         self.prg.build()
@@ -171,9 +176,11 @@ class RPyOpenCLContext():
 
                     local_work_size = None
                     divider = 1
-                    if self.use_prefered_vector_size is not None:
+                    if self.use_prefered_vector_size is not None:                
                         divider = self.preferred_vector_size[self.use_prefered_vector_size]
-                        
+                        if max(tuple(dim % divider for dim in work_size)) != 0:
+                            raise RuntimeError("input buffer size {} is not divisible by the prefered vector size {}".format(work_size, divider))
+
                     global_work_size = tuple(dim//divider for dim in work_size)
                     # global_work_size = work_size//divider
 
@@ -198,6 +205,8 @@ class RPyOpenCLContext():
                         self.enqueue_event.set_callback(cl.command_execution_status.COMPLETE, self.copy_on_callback)
                         return None
                         
+                except RuntimeError as e:
+                    raise e
                 except Exception as e:
                     traceback.print_exc()
                     raise RuntimeError("Unexpected error", e)

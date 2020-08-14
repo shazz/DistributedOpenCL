@@ -9,7 +9,7 @@ from decorators import timer
 
 # Globals to simplify sample tuning
 object_type = np.float32
-size = 50000
+size = 5000
 kernel_name = "test_sqrt"
 
 a_np = np.random.rand(size).astype(object_type)
