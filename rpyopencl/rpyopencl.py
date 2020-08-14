@@ -36,8 +36,10 @@ class ClusterContext():
             for node, sub_array in zip(self.context_nodes.values(), split_array):
                 node.create_input_buffer(sub_array)
         else:
-            logging.debug("No split for this input")
-            node.create_input_buffer(local_object)
+            logging.debug("No split for this input of type {}".format(type(local_object)))
+            for node in self.context_nodes.values():
+                node.create_input_buffer(local_object)         
+            
 
     def create_output_buffer(self, object_shape: tuple, object_type: type):
 

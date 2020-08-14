@@ -238,6 +238,9 @@ class TestUseWithoutTemplateNoDivisible(CommonTest):
 
 class TestUseOptimizedNoDivisible(CommonTest):
 
+    # WARNING!!!! This test will not pass even as the result is wrong! kernel conception issue!
+    # There is no easy way to spot this conception issue unless checking the kernel input type
+
     @pytest.fixture(autouse=True)
     def setup_opencl(self):
 

@@ -117,7 +117,7 @@ class RPyOpenCLContext():
             buffer = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(local_object))
             self.input_buffers.append(buffer)
         else:
-            logging.debug("Adding as scalar type: ", type(local_object))
+            logging.debug("Adding as scalar type: {}".format(type(local_object)))
             self.input_buffers.append(local_object)
 
     def create_output_buffer(self, object_type, shape):
