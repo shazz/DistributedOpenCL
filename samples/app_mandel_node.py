@@ -33,32 +33,32 @@ def setup_opencl_kernel():
         logging.debug(json.dumps(device, indent=4, sort_keys=True))
 
     logging.debug("Create context")
-    node.create_context()
+    ctx = node.create_context()
 
     logging.debug("Add command queue on context")
-    node.add_command_queue()
+    node.add_command_queue(ctx)
 
     logging.debug("Reading and compiling the kernel using preferred vector size")
     with open("kernels/mandelbrot.cl", "r") as kernel_file:
         kernel = kernel_file.read()
-        node.compile_kernel(kernel, use_prefered_vector_size="float")
+        node.compile_kernel(ctx, kernel, use_prefered_vector_size="float")
 
-    return node
+    return node, ctx
 
 @timer
-def compute_fractal(node, q, maxiter):
+def compute_fractal(node, ctx, q, maxiter):
 
     array_type = np.uint16
 
     logging.debug("Create 2 inputs buffers")
-    node.create_input_buffer(q)
-    node.create_input_buffer(np.uint16(maxiter))
+    node.create_input_buffer(ctx, q)
+    node.create_input_buffer(ctx, np.uint16(maxiter))
 
     logging.debug("Create 1 output buffer of type {} and shape {}".format(array_type, q.shape))
-    node.create_output_buffer(object_type=array_type, object_shape=q.shape)
+    node.create_output_buffer(ctx, object_type=array_type, object_shape=q.shape)
 
     logging.debug("Executing the kernel")
-    res_np_arrays = node.execute_kernel("mandelbrot", q.shape, True)
+    res_np_arrays = node.execute_kernel(ctx, "mandelbrot", q.shape, True)
 
     return res_np_arrays
 
@@ -77,13 +77,13 @@ if __name__ == '__main__':
     h = 2048
 
     # setup remote OpenCL node
-    node = setup_opencl_kernel()
+    node, ctx = setup_opencl_kernel()
 
     # generate inputs
     q = generate_inputs(x1=-2.13, x2=0.77, y1=-1.3, y2=1.3, w=w, h=h)
     
     # Compute fractal
-    output = compute_fractal(node, q, maxiter = 30)
+    output = compute_fractal(node, ctx, q, maxiter = 30)
 
     logging.debug("Reshaping from {} to {}".format(output.shape, (w, h)))
     mandel = (output.reshape((h, w)) / float(output.max()) * 255.).astype(np.uint8)
@@ -91,11 +91,11 @@ if __name__ == '__main__':
     im = Image.fromarray(mandel)
     im.putpalette([i for rgb in ((j, 0, 0) for j in range(255))
                         for i in rgb])
-    im.save("fractal.png")
+    im.save("fractal_node.png")
 
-    node.delete_context()
-    node.disconnect()
-
+    # cleaning
+    node.delete_context(ctx)
+    node.disconnect()    
 
 
 

@@ -13,9 +13,19 @@ import traceback
 logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(module)s - %(message)s')
 
 class RPyOpenCLContext():
-
+    """[summary]
+    """
     def __init__(self, platform_idx, device_idx):
+        """[summary]
 
+        Args:
+            platform_idx ([type]): [description]
+            device_idx ([type]): [description]
+
+        Raises:
+            ValueError: [description]
+            ValueError: [description]
+        """
         # generate a context id
         self.context_id = uuid.uuid4().hex
 
@@ -65,8 +75,12 @@ class RPyOpenCLContext():
         }
         self.use_prefered_vector_size = None
 
-    def get_device_info(self):
+    def get_device_info(self) -> None:
+        """[summary]
 
+        Returns:
+            [type]: [description]
+        """
         device_info = {
             'name': self.device.name,
             'prefered_vector_size': self.preferred_vector_size,
@@ -80,12 +94,17 @@ class RPyOpenCLContext():
 
         return device_info
 
-    def create_queue(self):
-
+    def create_queue(self) -> None:
+        """[summary]
+        """
         self.queue = cl.CommandQueue(self.ctx)
 
-    def run_perf_tests(self):
+    def run_perf_tests(self) -> None:
+        """[summary]
 
+        Raises:
+            RuntimeError: [description]
+        """
         if self.queue is not None:
 
             prof_overhead, latency = perf.get_profiling_overhead(self.ctx)
@@ -112,7 +131,14 @@ class RPyOpenCLContext():
             raise RuntimeError("perf tests cannot be executed without a queue")
 
     def create_input_buffer(self, local_object) -> None:
+        """[summary]
 
+        Args:
+            local_object ([type]): [description]
+
+        Returns:
+            [type]: [description]
+        """
         if type(local_object) is numpy.ndarray:
             buffer = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(local_object))
             self.input_buffers.append(buffer)
@@ -120,8 +146,15 @@ class RPyOpenCLContext():
             logging.debug("Adding as scalar type: {}".format(type(local_object)))
             self.input_buffers.append(local_object)
 
-    def create_output_buffer(self, object_type, shape):
+        return None
 
+    def create_output_buffer(self, object_type, shape) -> None:
+        """[summary]
+
+        Args:
+            object_type ([type]): [description]
+            shape ([type]): [description]
+        """
         object_type = rpyc.classic.obtain(object_type)
         shape = rpyc.classic.obtain(shape)
 
@@ -135,8 +168,17 @@ class RPyOpenCLContext():
         self.output_buffers.append(buffer)
         self.output_list.append(destbuf)
 
-    def compile_kernel(self, kernel : str, use_prefered_vector_size : str):
+    def compile_kernel(self, kernel : str, use_prefered_vector_size : str) -> None:
+        """[summary]
 
+        Args:
+            kernel (str): [description]
+            use_prefered_vector_size (str): [description]
+
+        Raises:
+            ValueError: [description]
+            RuntimeError: [description]
+        """
         if use_prefered_vector_size not in [None, 'char', 'short', 'int', 'long', 'half', 'float', 'double']:
             raise ValueError("Unknown vector size: {}".format(use_prefered_vector_size))
         
@@ -160,7 +202,23 @@ class RPyOpenCLContext():
         self.prg.build()
 
     def execute_kernel(self, kernel_name: str, work_size: tuple, wait_execution: bool = True) -> np.array:
+        """[summary]
 
+        Args:
+            kernel_name (str): [description]
+            work_size (tuple): [description]
+            wait_execution (bool, optional): [description]. Defaults to True.
+
+        Raises:
+            ValueError: [description]
+            RuntimeError: [description]
+            e: [description]
+            RuntimeError: [description]
+            RuntimeError: [description]
+
+        Returns:
+            np.array: [description]
+        """
         for kernel in self.prg.all_kernels():
             logging.debug("Kernel available: {}".format(kernel.get_info(cl.kernel_info.FUNCTION_NAME)))
             if kernel.get_info(cl.kernel_info.FUNCTION_NAME) == kernel_name:
@@ -217,8 +275,16 @@ class RPyOpenCLContext():
 
         raise RuntimeError("Kernel {} not found".format(kernel_name))            
 
-    def copy_on_callback(self, status):
+    def copy_on_callback(self, status) -> None:
+        """[summary]
 
+        Args:
+            status ([type]): [description]
+
+        Raises:
+            RuntimeError: [description]
+            RuntimeError: [description]
+        """
         try:
             if self.callback is None:
                 raise RuntimeError("Remote callback is not set!")
@@ -234,7 +300,11 @@ class RPyOpenCLContext():
             traceback.print_exc()
             raise RuntimeError("Unexpected error on callback", e)            
 
-    def set_callback(self, cb):
+    def set_callback(self, cb) -> None:
+        """[summary]
 
+        Args:
+            cb (function): [description]
+        """
         logging.debug("Callback set to {}".format(cb))
         self.callback = cb

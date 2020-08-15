@@ -16,31 +16,23 @@ b_np = np.random.rand(size).astype(object_type)
 nodes = [ {"name": "rpi-opencl1", "ip": "localhost"}, {"name": "rpi-opencl2", "ip": "localhost"}  ]
 
 @timer
-def compute_on_one_node(node, kernel):
-
-    print("Get Devices for node 1")
-    node_devices = node.get_devices()
-    for device in node_devices.values():
-        print(json.dumps(device, indent=4, sort_keys=True))
-
-    print("Create context")
-    node.create_context()
+def compute_on_one_node(node, ctx, kernel):
 
     print("Add command queue on context")
-    node.add_command_queue()
+    node.add_command_queue(ctx)
 
-    node.compile_kernel(kernel, use_prefered_vector_size="float")
+    node.compile_kernel(ctx, kernel, use_prefered_vector_size="float")
 
     print("Create 2 inputs buffers of shape {}".format(a_np.shape))
-    node.create_input_buffer(a_np)
-    node.create_input_buffer(b_np)
+    node.create_input_buffer(ctx, a_np)
+    node.create_input_buffer(ctx, b_np)
 
     print("Create 2 output buffers of size {} and type {}".format(object_type, a_np.shape))
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
-    node.create_output_buffer(object_type=object_type, object_shape=a_np.shape)
+    node.create_output_buffer(ctx, object_type=object_type, object_shape=a_np.shape)
+    node.create_output_buffer(ctx, object_type=object_type, object_shape=a_np.shape)
 
     print("Executing the Kernel")
-    res_list = node.execute_kernel(kernel_name, (size,), True)
+    res_list = node.execute_kernel(ctx, kernel_name, (size,), True)
 
     return res_list
 
@@ -79,14 +71,22 @@ if __name__ == "__main__":
     for platform in node1_platforms.values():
         print(json.dumps(platform, indent=4, sort_keys=True))
 
+    print("Get Devices for node 1")
+    node_devices = node1.get_devices()
+    for device in node_devices.values():
+        print(json.dumps(device, indent=4, sort_keys=True))
+
+    print("Create context")
+    ctx = node1.create_context()
+
     print("Computing kernel {} on the node {}".format(kernel_name, node1.node_name))
-    res_cl_node = compute_on_one_node(node1, kernel)
+    res_cl_node = compute_on_one_node(node1, ctx, kernel)
 
     print("comparing node results")
     compare_results(res_cl_node)
 
     print("Cleaning")
-    node1.delete_context()
+    node1.delete_context(ctx)
     node1.disconnect()
 
 

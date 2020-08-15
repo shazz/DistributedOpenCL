@@ -12,10 +12,10 @@ from decorators import timer
 @timer 
 def setup_opencl_kernel():
 
-    nodes = [ {"name": "rpi-opencl1", "ip": "localhost"}, {"name": "rpi-opencl2", "ip": "localhost"}  ]
+    nodes = [ {"name": "rpi-opencl1", "ip": "localhost"}, {"name": "rpi-opencl2", "ip": "localhost"}, {"name": "rpi-opencl3", "ip": "localhost"}, {"name": "rpi-opencl4", "ip": "localhost"}    ]
 
     logging.debug("Create Cluster")
-    cluster = RPyOpenCLCluster(nodes, use_async=False)
+    cluster = RPyOpenCLCluster(nodes, use_async=True)
 
     logging.debug("Get Platforms on the cluster")
     platforms = cluster.get_platforms()
@@ -61,8 +61,8 @@ def generate_inputs(x1, x2, y1, y2, w, h):
 if __name__ == '__main__':
 
     # set width and height of window, more pixels take longer to calculate
-    w = 2048
-    h = 2048
+    w = 2048*3
+    h = 2048*3
 
     # setup remote OpenCL cluster context
     cluster, context = setup_opencl_kernel()
