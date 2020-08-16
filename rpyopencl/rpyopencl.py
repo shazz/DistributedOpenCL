@@ -79,7 +79,7 @@ class ClusterContext():
                 logging.debug("Compiling kernel for node {} and context {}".format(node.node_name, context))
                 node.compile_kernel(context, kernel, use_prefered_vector_size)
 
-    def create_input_buffer(self, local_object: Any):
+    def create_input_buffer(self, local_object: Any) -> None:
         """[summary]
 
         Args:
@@ -116,6 +116,51 @@ class ClusterContext():
             for node in self.context_nodes.values():
                 for context in self.contexts[node.node_name]:
                     node.create_input_buffer(context, local_object)
+
+    def update_input_buffer(self, buffer_index: int, local_object: Any) -> None:
+        """[summary]
+
+        Args:
+            buffer_index (int): [description]
+            local_object (Any): [description]
+
+        Raises:
+            ValueError: [description]
+
+        Returns:
+            [type]: [description]
+        """
+        #FIXME Duplicate work if there is multiple contexts (=platforms) for one node
+        if type(local_object) is np.ndarray:
+            logging.debug("Splitting input array")
+            split_array = np.array_split(local_object, len(self.context_nodes))
+        
+            if not self.use_async:
+                for node, sub_array in zip(self.context_nodes.values(), split_array):
+                    logging.debug("Create buffer with sub-array on node {}".format(node.node_name))
+                    for context in self.contexts[node.node_name]:
+                        node.update_input_buffer(context, buffer_index, sub_array)
+            else:
+                statuses = []
+
+                for node, sub_array in zip(self.context_nodes.values(), split_array):
+                    logging.debug("Create buffer with sub-array on node {}".format(node.node_name))
+                    for context in self.contexts[node.node_name]:
+                        statuses.append(node.update_input_buffer(context, buffer_index, sub_array))
+            
+                logging.debug("{} statuses are waiting to finish".format(len(statuses)))
+                # waiting for all buffers to be created
+                while len(statuses) > 0:
+                    for status in statuses:
+                        if status.ready:
+                            statuses.remove(status)
+                            logging.debug("One input buffer created, remaining: {}".format(len(statuses)))
+        else:
+            #FIXME: is it ok to send asynchronously the scalar buffer without waiting....
+            logging.debug("No split for this input of type {}".format(type(local_object)))
+            for node in self.context_nodes.values():
+                for context in self.contexts[node.node_name]:
+                    node.update_input_buffer(context, buffer_index, local_object)
 
     def create_output_buffer(self, object_shape: tuple, object_type: type):
         """[summary]
@@ -354,8 +399,32 @@ class Node():
         else:
             self.cluster_cl.create_input_buffer(context_id, local_object)     
             return None
-        
 
+    def update_input_buffer(self, context_id: str, buffer_index: int, local_object: Any) -> Any:
+        """[summary]
+
+        Args:
+            context_id (str): [description]
+            buffer_index (int): [description]
+            local_object (Any): [description]
+
+        Raises:
+            ValueError: [description]
+
+        Returns:
+            Any: [description]
+        """
+        if context_id not in self.contexts:
+            raise ValueError("No context {} found!".format(context_id))
+
+        if self.use_async:
+            logging.debug("Creating buffers asynchronously")
+            _update_input_buffer = rpyc.async_(self.cluster_cl.update_input_buffer)
+            return _update_input_buffer(context_id, buffer_index, local_object)
+        else:
+            self.cluster_cl.update_input_buffer(context_id, buffer_index, local_object)     
+            return None            
+        
     def create_output_buffer(self, context_id: str, object_shape: tuple, object_type: type) -> None:
         """[summary]
 

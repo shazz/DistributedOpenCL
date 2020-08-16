@@ -130,11 +130,11 @@ class RPyOpenCLContext():
         else:
             raise RuntimeError("perf tests cannot be executed without a queue")
 
-    def create_input_buffer(self, local_object) -> None:
+    def create_input_buffer(self, local_object: Any) -> None:
         """[summary]
 
         Args:
-            local_object ([type]): [description]
+            local_object (Any): [description]
 
         Returns:
             [type]: [description]
@@ -147,6 +147,26 @@ class RPyOpenCLContext():
             self.input_buffers.append(local_object)
 
         return None
+
+    def update_input_buffer(self, buffer_index: int, local_object: Any) -> None:
+        """[summary]
+
+        Args:
+            buffer_index (int): [description]
+            local_object (Any): [description]
+
+        Returns:
+            [type]: [description]
+        """
+        if type(local_object) is numpy.ndarray:
+            logging.debug("Updading memory buffer")
+            buffer = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(local_object))
+            self.input_buffers[buffer_index] = buffer
+        else:
+            logging.debug("Updating buffer as scalar type: {}".format(type(local_object)))
+            self.input_buffers[buffer_index] = local_object
+
+        return None        
 
     def create_output_buffer(self, object_type, shape) -> None:
         """[summary]

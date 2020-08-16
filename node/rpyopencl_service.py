@@ -143,6 +143,17 @@ class RPyOpenCLService(Service):
 
         self._get_context(context_id).create_input_buffer(local_object)
 
+    def exposed_update_input_buffer(self, context_id: str, buffer_index: int, local_object: Any) -> None:
+
+        local_object = rpyc.classic.obtain(local_object)
+        logging.debug("cast np to remove netref: {}".format(type(local_object)))
+        if type(local_object) == np.ndarray:
+            local_object = np.array(local_object)
+
+        self._get_context(context_id).update_input_buffer(buffer_index, local_object)
+
+
+
     def exposed_create_output_buffer(self, context_id: str, object_type, shape) -> None:
         """[summary]
 
