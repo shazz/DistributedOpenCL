@@ -13,13 +13,17 @@ size = 50000
 kernel_name = "sum_mul"
 a_np = np.random.rand(size).astype(object_type)
 b_np = np.random.rand(size).astype(object_type)
-nodes = [ {"name": "rpi-opencl1", "ip": "localhost"}, {"name": "rpi-opencl2", "ip": "localhost"}  ]
+nodes = [
+    {"name": "rpi-opencl1", "ip": "localhost"},
+    {"name": "rpi-opencl2", "ip": "localhost"}
+]
+
 
 @timer
 def compute_on_cluster(cl_context, kernel):
 
     print("Compiling kernel on all the nodes of the cluster")
-    cl_context.compile_kernel(kernel, use_prefered_vector_size = "float")
+    cl_context.compile_kernel(kernel, use_prefered_vector_size="float")
 
     print("Create 2 inputs buffers of size {} and type {}".format(type(a_np), a_np.shape))
     cl_context.create_input_buffer(local_object=a_np)
@@ -37,7 +41,13 @@ def compute_on_cluster(cl_context, kernel):
 
     return res_cl_np_arrays
 
-def compare_results(res_cl):
+
+def compare_results(res_cl: np.array) -> None:
+    """[summary]
+
+    Args:
+        res_cl ([type]): [description]
+    """
     print("Comparing the (a+b) and (a*b) results with local numpy")
     res_sum_np = np.array(res_cl[0])
     print("Result sum", res_sum_np)
@@ -50,6 +60,7 @@ def compare_results(res_cl):
     print("Difference:", res_mul_np - (a_np * b_np))
     print("Norm", np.linalg.norm(res_mul_np - (a_np * b_np)))
     assert np.allclose(res_mul_np, a_np * b_np)
+
 
 if __name__ == "__main__":
 
@@ -77,9 +88,4 @@ if __name__ == "__main__":
 
     print("Cleaning")
     cluster.delete_cluster_context(context)
-    cluster.disconnect_cluster_context(context)    
-
-
-
-
-    
+    cluster.disconnect_cluster_context(context)

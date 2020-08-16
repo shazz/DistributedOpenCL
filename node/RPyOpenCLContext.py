@@ -8,9 +8,10 @@ import rpyc
 import uuid
 import logging
 from typing import Callable, Any
-import traceback 
+import traceback
 
 logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(module)s - %(message)s')
+
 
 class RPyOpenCLContext():
     """[summary]
@@ -43,9 +44,9 @@ class RPyOpenCLContext():
 
         devices = self.platform.get_devices()
         if device_idx > len(devices) - 1:
-            raise ValueError("No device found at index {} on this platform".format(device_idx))        
+            raise ValueError("No device found at index {} on this platform".format(device_idx))
         self.device = devices[device_idx]
-        
+
         # variables to store program and queue
         self.prg = None
         self.queue = None
@@ -109,10 +110,10 @@ class RPyOpenCLContext():
 
             prof_overhead, latency = perf.get_profiling_overhead(self.ctx)
             logging.debug("command latency: %g s" % latency)
-            logging.debug("profiling overhead: %g s -> %.1f %%" % (prof_overhead, 100*prof_overhead/latency))     
+            logging.debug("profiling overhead: %g s -> %.1f %%" % (prof_overhead, 100*prof_overhead/latency))
 
             logging.debug("empty kernel: %g s" % perf.get_empty_kernel_time(self.queue))
-            logging.debug("float32 add: %g GOps/s" % (perf.get_add_rate(self.queue)/1e9))        
+            logging.debug("float32 add: %g GOps/s" % (perf.get_add_rate(self.queue)/1e9))
 
             for tx_type in [perf.HostToDeviceTransfer, perf.DeviceToHostTransfer, perf.DeviceToDeviceTransfer]:
                 logging.debug("----------------------------------------")
@@ -166,7 +167,7 @@ class RPyOpenCLContext():
             logging.debug("Updating buffer as scalar type: {}".format(type(local_object)))
             self.input_buffers[buffer_index] = local_object
 
-        return None        
+        return None
 
     def create_output_buffer(self, object_type, shape) -> None:
         """[summary]
@@ -182,13 +183,13 @@ class RPyOpenCLContext():
         logging.debug("Creating output buffer of type {}".format(str(object_type)))
 
         destbuf = np.zeros(shape).astype(object_type)
-        #logging.debug(destbuf.shape, type(destbuf), destbuf, destbuf.nbytes)
+        # logging.debug(destbuf.shape, type(destbuf), destbuf, destbuf.nbytes)
 
         buffer = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, destbuf.nbytes)
         self.output_buffers.append(buffer)
         self.output_list.append(destbuf)
 
-    def compile_kernel(self, kernel : str, use_prefered_vector_size : str) -> None:
+    def compile_kernel(self, kernel: str, use_prefered_vector_size: str) -> None:
         """[summary]
 
         Args:
@@ -201,7 +202,7 @@ class RPyOpenCLContext():
         """
         if use_prefered_vector_size not in [None, 'char', 'short', 'int', 'long', 'half', 'float', 'double']:
             raise ValueError("Unknown vector size: {}".format(use_prefered_vector_size))
-        
+
         if use_prefered_vector_size is not None:
             if '<VECSIZE>' not in kernel:
                 logging.debug("No <VECSIZE> template found in kernel, preferred vector size won't be used")
@@ -254,7 +255,7 @@ class RPyOpenCLContext():
 
                     local_work_size = None
                     divider = 1
-                    if self.use_prefered_vector_size is not None:                
+                    if self.use_prefered_vector_size is not None:
                         divider = self.preferred_vector_size[self.use_prefered_vector_size]
                         if max(tuple(dim % divider for dim in work_size)) != 0:
                             raise RuntimeError("input buffer size {} is not divisible by the prefered vector size {}".format(work_size, divider))
@@ -264,9 +265,9 @@ class RPyOpenCLContext():
 
                     logging.debug("work_size: {}, global_work_size: {}, divider: {}".format(work_size, global_work_size, divider))
                     self.enqueue_event = cl.enqueue_nd_range_kernel(
-                        queue=self.queue, 
-                        kernel=kernel, 
-                        global_work_size=global_work_size, 
+                        queue=self.queue,
+                        kernel=kernel,
+                        global_work_size=global_work_size,
                         local_work_size=local_work_size)
 
                     if wait_execution:
@@ -282,7 +283,7 @@ class RPyOpenCLContext():
                         logging.debug("Adding callback on COMPLETE event")
                         self.enqueue_event.set_callback(cl.command_execution_status.COMPLETE, self.copy_on_callback)
                         return None
-                        
+
                 except RuntimeError as e:
                     raise e
                 except Exception as e:
@@ -293,13 +294,13 @@ class RPyOpenCLContext():
                 logging.error("We shoud never get here else there is a problem!!!")
                 break
 
-        raise RuntimeError("Kernel {} not found".format(kernel_name))            
+        raise RuntimeError("Kernel {} not found".format(kernel_name))
 
-    def copy_on_callback(self, status) -> None:
+    def copy_on_callback(self, status: cl.command_execution_status) -> None:
         """[summary]
 
         Args:
-            status ([type]): [description]
+            status (cl.command_execution_status): [description]
 
         Raises:
             RuntimeError: [description]
@@ -309,7 +310,7 @@ class RPyOpenCLContext():
             if self.callback is None:
                 raise RuntimeError("Remote callback is not set!")
 
-            logging.debug("On callback for event {}, enqueue from {} to {}".format(status, self.output_buffers, self.output_list)) 
+            logging.debug("On callback for event {}, enqueue from {} to {}".format(status, self.output_buffers, self.output_list))
             for array, buffer in zip(self.output_list, self.output_buffers):
                 cl.enqueue_copy(self.queue, array, buffer)
 
@@ -318,13 +319,13 @@ class RPyOpenCLContext():
 
         except Exception as e:
             traceback.print_exc()
-            raise RuntimeError("Unexpected error on callback", e)            
+            raise RuntimeError("Unexpected error on callback", e)
 
-    def set_callback(self, cb) -> None:
+    def set_callback(self, cb: Callable) -> None:
         """[summary]
 
         Args:
-            cb (function): [description]
+            cb (Callable): [description]
         """
         logging.debug("Callback set to {}".format(cb))
         self.callback = cb

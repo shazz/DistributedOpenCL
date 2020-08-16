@@ -7,15 +7,17 @@ from enum import Enum
 logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(module)s - %(message)s')
 RPYC_CFG = {"allow_all_attrs": True, "allow_pickle": True, "allow_public_attrs": True}
 
+
 class DeviceType(Enum):
     CPU = "CPU"
     GPU = 1
     ACCELERATOR = 2
     ALL = 3
 
+
 class ClusterContext():
 
-    def __init__(self, nodes: dict, devices_to_use: DeviceType = DeviceType.CPU, use_async : bool = False):
+    def __init__(self, nodes: dict, devices_to_use: DeviceType = DeviceType.CPU, use_async: bool = False):
         """[summary]
 
         Args:
@@ -45,27 +47,26 @@ class ClusterContext():
 
                     for d_idx, device in enumerate(platform['devices']):
                         if devices_to_use == DeviceType.ALL or device['type'] == devices_to_use.value:
-                            logging.debug("Adding device {} of type {}".format(device, device['type']))    
-                            ctx = node.create_context(platform_idx = idx, device_idx = d_idx)
+                            logging.debug("Adding device {} of type {}".format(device, device['type']))
+                            ctx = node.create_context(platform_idx=idx, device_idx=d_idx)
                             node.add_command_queue(ctx)
-            
+
                             self.contexts[node.node_name].append(ctx)
                             logging.debug("Adding context {} for node {}: {}".format(ctx, node.node_name, self.contexts))
                         else:
-                            logging.debug("Device {} of type {} discarded".format(device, device['type']))   
-                
+                            logging.debug("Device {} of type {} discarded".format(device, device['type']))
+
             except RuntimeError as e:
                 logging.warning("Forgetting node: {} due to: {}".format(node, e))
 
         logging.debug("Contexts created: {}".format(self.contexts))
-        
+
         # check we created at least one context
-        
+
         for contexes in self.contexts.values():
             self.nb_ctx += len(contexes)
         if self.nb_ctx == 0:
             raise ValueError("No suitable platforms ({}) found to create a Cluster".format(devices_to_use))
-
 
     def compile_kernel(self, kernel: str, use_prefered_vector_size: str = None):
         """[summary]
@@ -85,11 +86,11 @@ class ClusterContext():
         Args:
             local_object (Any): [description]
         """
-        #FIXME Duplicate work if there is multiple contexts (=platforms) for one node
+        # FIXME Duplicate work if there is multiple contexts (=platforms) for one node
         if type(local_object) is np.ndarray:
             logging.debug("Splitting input array")
             split_array = np.array_split(local_object, len(self.context_nodes))
-        
+
             if not self.use_async:
                 for node, sub_array in zip(self.context_nodes.values(), split_array):
                     logging.debug("Create buffer with sub-array on node {}".format(node.node_name))
@@ -102,7 +103,7 @@ class ClusterContext():
                     logging.debug("Create buffer with sub-array on node {}".format(node.node_name))
                     for context in self.contexts[node.node_name]:
                         statuses.append(node.create_input_buffer(context, sub_array))
-            
+
                 logging.debug("{} statuses are waiting to finish".format(len(statuses)))
                 # waiting for all buffers to be created
                 while len(statuses) > 0:
@@ -111,7 +112,7 @@ class ClusterContext():
                             statuses.remove(status)
                             logging.debug("One input buffer created, remaining: {}".format(len(statuses)))
         else:
-            #FIXME: is it ok to send asynchronously the scalar buffer without waiting....
+            # FIXME: is it ok to send asynchronously the scalar buffer without waiting....
             logging.debug("No split for this input of type {}".format(type(local_object)))
             for node in self.context_nodes.values():
                 for context in self.contexts[node.node_name]:
@@ -130,11 +131,11 @@ class ClusterContext():
         Returns:
             [type]: [description]
         """
-        #FIXME Duplicate work if there is multiple contexts (=platforms) for one node
+        # FIXME Duplicate work if there is multiple contexts (=platforms) for one node
         if type(local_object) is np.ndarray:
             logging.debug("Splitting input array")
             split_array = np.array_split(local_object, len(self.context_nodes))
-        
+
             if not self.use_async:
                 for node, sub_array in zip(self.context_nodes.values(), split_array):
                     logging.debug("Create buffer with sub-array on node {}".format(node.node_name))
@@ -147,7 +148,7 @@ class ClusterContext():
                     logging.debug("Create buffer with sub-array on node {}".format(node.node_name))
                     for context in self.contexts[node.node_name]:
                         statuses.append(node.update_input_buffer(context, buffer_index, sub_array))
-            
+
                 logging.debug("{} statuses are waiting to finish".format(len(statuses)))
                 # waiting for all buffers to be created
                 while len(statuses) > 0:
@@ -156,7 +157,7 @@ class ClusterContext():
                             statuses.remove(status)
                             logging.debug("One input buffer created, remaining: {}".format(len(statuses)))
         else:
-            #FIXME: is it ok to send asynchronously the scalar buffer without waiting....
+            # FIXME: is it ok to send asynchronously the scalar buffer without waiting....
             logging.debug("No split for this input of type {}".format(type(local_object)))
             for node in self.context_nodes.values():
                 for context in self.contexts[node.node_name]:
@@ -169,16 +170,16 @@ class ClusterContext():
             object_shape (tuple): [description]
             object_type (type): [description]
         """
-        #FIXME: how to split on non 1D arrays ?
+        # FIXME: how to split on non 1D arrays ?
         split_array_shape = object_shape[0] // len(self.context_nodes)
 
         for node in self.context_nodes.values():
             for context in self.contexts[node.node_name]:
                 node.create_output_buffer(context, split_array_shape, object_type)
-        
+
         self.output_buffers_nb += 1
-    
-    def execute_kernel(self, kernel_name : str, work_size: int) -> np.array:
+
+    def execute_kernel(self, kernel_name: str, work_size: int) -> np.array:
         """[summary]
 
         Args:
@@ -188,13 +189,13 @@ class ClusterContext():
         Returns:
             np.array: [description]
         """
-        #FIXME: divider should be self.nb_ctx
+        # FIXME: divider should be self.nb_ctx
         divider = len(self.context_nodes)
         context_work_size = tuple(dim//divider for dim in work_size)
         # context_work_size = work_size // divider)
         logging.debug("worksize: {}, nodes: {}, context_work_size: {}".format(work_size, divider, context_work_size))
         logging.debug("output buffers: {}".format(self.output_buffers_nb))
-        
+
         res_per_buffer = []
         res = []
         for output in range(self.output_buffers_nb):
@@ -212,27 +213,26 @@ class ClusterContext():
             statuses = {}
             results = {}
             for node in self.context_nodes.values():
-                for context in self.contexts[node.node_name]:                
+                for context in self.contexts[node.node_name]:
                     statuses[node.node_name] = node.execute_kernel(context, kernel_name, context_work_size, wait_execution=True)
-            
+
             logging.debug("{} kernels are now wating to be completed".format(len(statuses)))
 
-            #FIXME, there is no guarantee the order will be kept so, this code doesn't work as it is
+            # FIXME, there is no guarantee the order will be kept so, this code doesn't work as it is
             while statuses:
                 for node in statuses.keys():
                     status = statuses[node]
                     if status.ready:
                         sub_res = np.array(status.value)
-                        results[node] = { }
+                        results[node] = {}
                         for output in range(self.output_buffers_nb):
                             results[node][output] = sub_res[output]
 
-                        statuses = dict((k,v) for k,v in statuses.items() if k!=node)
+                        statuses = dict((k, v) for k, v in statuses.items() if k != node)
                         logging.debug("One kernel completed, remaining: {}".format(len(statuses)))
 
             for output in range(self.output_buffers_nb):
                 res_per_buffer[output] = [results[node][output] for node in sorted(results.keys())]
-
 
         logging.debug("Got all results, aggregating them")
         for output in range(self.output_buffers_nb):
@@ -254,13 +254,14 @@ class ClusterContext():
     def _delete_contexts(self) -> None:
 
         for node in self.context_nodes.values():
-            for context in self.contexts[node.node_name]:            
+            for context in self.contexts[node.node_name]:
                 logging.debug("Deleting context {} on node {}".format(context, node.node_name))
                 node.delete_context(context)
 
         # reset
         self.nb_ctx = 0
         self.contexts = {}
+
 
 class Node():
     """[summary]
@@ -286,7 +287,7 @@ class Node():
         except Exception as e:
             logging.error("Cannot connect to node {} at {} due to {}".format(name, ip, e))
             raise RuntimeError(e)
-        
+
         self.contexts = []
         self.node_name = name
         self.ip = ip
@@ -297,7 +298,7 @@ class Node():
 
         Returns:
             dict: [description]
-        """        
+        """
         return {
             "node": self.node_name,
             "platforms": self.platforms
@@ -314,9 +315,9 @@ class Node():
             devices[platform['name']] = []
             for device in dict(self.cluster_cl.get_devices(idx)).values():
                 devices[platform['name']].append(device)
-        
+
         return devices
-    
+
     def create_context(self, platform_idx: int = 0, device_idx: int = 0) -> str:
         """[summary]
 
@@ -326,7 +327,7 @@ class Node():
 
         Returns:
             str: [description]
-        """     
+        """
         ctx = self.cluster_cl.create_context(platform_idx=platform_idx, device_idx=device_idx)
         self.contexts.append(ctx)
 
@@ -340,7 +341,7 @@ class Node():
 
         Returns:
             dict: [description]
-        """        
+        """
         if context_id not in self.contexts:
             raise ValueError("No context {} found!".format(context_id))
 
@@ -354,7 +355,7 @@ class Node():
 
         Raises:
             ValueError: [description]
-        """     
+        """
         if context_id not in self.contexts:
             raise ValueError("No context {} found!".format(context_id))
 
@@ -370,7 +371,7 @@ class Node():
 
         Raises:
             ValueError: [description]
-        """   
+        """
         if context_id not in self.contexts:
             raise ValueError("No context {} found!".format(context_id))
 
@@ -388,7 +389,7 @@ class Node():
 
         Returns:
             Any: [description]
-        """  
+        """
         if context_id not in self.contexts:
             raise ValueError("No context {} found!".format(context_id))
 
@@ -397,7 +398,7 @@ class Node():
             _create_input_buffer = rpyc.async_(self.cluster_cl.create_input_buffer)
             return _create_input_buffer(context_id, local_object)
         else:
-            self.cluster_cl.create_input_buffer(context_id, local_object)     
+            self.cluster_cl.create_input_buffer(context_id, local_object)
             return None
 
     def update_input_buffer(self, context_id: str, buffer_index: int, local_object: Any) -> Any:
@@ -422,9 +423,9 @@ class Node():
             _update_input_buffer = rpyc.async_(self.cluster_cl.update_input_buffer)
             return _update_input_buffer(context_id, buffer_index, local_object)
         else:
-            self.cluster_cl.update_input_buffer(context_id, buffer_index, local_object)     
-            return None            
-        
+            self.cluster_cl.update_input_buffer(context_id, buffer_index, local_object)
+            return None
+
     def create_output_buffer(self, context_id: str, object_shape: tuple, object_type: type) -> None:
         """[summary]
 
@@ -435,13 +436,13 @@ class Node():
 
         Raises:
             ValueError: [description]
-        """    
+        """
         if context_id not in self.contexts:
             raise ValueError("No context {} found!".format(context_id))
 
         self.cluster_cl.create_output_buffer(context_id, object_type=object_type, shape=object_shape)
 
-    def execute_kernel(self, context_id: str, kernel_name : str, work_size: tuple, wait_execution: bool = True) -> np.array:
+    def execute_kernel(self, context_id: str, kernel_name: str, work_size: tuple, wait_execution: bool = True) -> np.array:
         """[summary]
 
         Args:
@@ -455,7 +456,7 @@ class Node():
 
         Returns:
             np.array: [description]
-        """      
+        """
         if context_id not in self.contexts:
             raise ValueError("No context {} found!".format(context_id))
 
@@ -485,7 +486,7 @@ class Node():
 
     def disconnect(self) -> None:
         """[summary]
-        """        
+        """
         self._conn.close()
 
     def set_callback(self, context_id: str, cb: Callable) -> None:
@@ -503,17 +504,18 @@ class Node():
 
         self.cluster_cl.set_callback(context_id, cb)
 
+
 class RPyOpenCLCluster():
 
     # nodes = [ {"name": "rpi1", "ip": "localhost"} ]
 
-    def __init__(self, nodes: list, use_async : bool = False):
+    def __init__(self, nodes: list, use_async: bool = False):
         """[summary]
 
         Args:
             nodes ([type]): [description]
             use_async (bool, optional): [description]. Defaults to False.
-        """        
+        """
 
         self.nodes = {}
         self.use_async = use_async
@@ -534,8 +536,8 @@ class RPyOpenCLCluster():
 
         Returns:
             list: [description]
-        """        
-        if node_name: 
+        """
+        if node_name:
             if node_name in self.nodes:
                 return self.nodes[node_name].get_platforms()
             else:
@@ -599,8 +601,3 @@ class RPyOpenCLCluster():
             cluster_context ([type]): [description]
         """
         cluster_context.disconnect()
-
-
-
-
-

@@ -3,3 +3,4 @@ pyopencl
 pillow
 rpyc
 pytest
+flake8

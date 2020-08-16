@@ -29,7 +29,7 @@ class RPyOpenCLService(Service):
         "{}".format(1 << 2): "GPU",
         "{}".format(1 << 3): "ACCELERATOR",
         "{}".format(1 << 4): "CUSTOM",
-    }     
+    }
 
     def _get_context(self, context_id: str) -> RPyOpenCLContext:
         """[summary]
@@ -42,19 +42,19 @@ class RPyOpenCLService(Service):
 
         Returns:
             [type]: [description]
-        """        
-        logging.debug("get Context {} from {}".format(context_id, RPyOpenCLService.contexts))
+        """
+        logging.debug("get Context {} - {} available".format(context_id, len(RPyOpenCLService.contexts)))
 
         if context_id not in RPyOpenCLService.contexts:
             raise RuntimeError("Unknown context id")
-        return RPyOpenCLService.contexts[context_id]        
+        return RPyOpenCLService.contexts[context_id]
 
     def exposed_get_platforms(self) -> Dict:
         """[summary]
 
         Returns:
             [type]: [description]
-        """        
+        """
         platforms = cl.get_platforms()
 
         platforms_desc = {}
@@ -66,10 +66,18 @@ class RPyOpenCLService(Service):
                 'vendor': platform.vendor,
                 'version': platform.version,
                 'devices': [{'name': device.name, 'type': RPyOpenCLService.device_types_mapping[str(device.type)]} for device in platform.get_devices()]
-            }  
+            }
         return platforms_desc
 
-    def exposed_get_devices(self, platform_idx: int):
+    def exposed_get_devices(self, platform_idx: int) -> Dict:
+        """[summary]
+
+        Args:
+            platform_idx (int): [description]
+
+        Returns:
+            Dict: [description]
+        """
         devices = cl.get_platforms()[platform_idx].get_devices()
 
         devices_desc = {}
@@ -91,9 +99,9 @@ class RPyOpenCLService(Service):
                 'max_clock_frequency': device.max_clock_frequency,
                 'max_compute_units': device.max_compute_units,
                 'image_support': True if device.image_support == 1 else False,
-            }  
+            }
 
-        return devices_desc        
+        return devices_desc
 
     def exposed_create_context(self, platform_idx: int, device_idx: int) -> str:
         """[summary]
@@ -144,15 +152,19 @@ class RPyOpenCLService(Service):
         self._get_context(context_id).create_input_buffer(local_object)
 
     def exposed_update_input_buffer(self, context_id: str, buffer_index: int, local_object: Any) -> None:
+        """[summary]
 
+        Args:
+            context_id (str): [description]
+            buffer_index (int): [description]
+            local_object (Any): [description]
+        """
         local_object = rpyc.classic.obtain(local_object)
         logging.debug("cast np to remove netref: {}".format(type(local_object)))
         if type(local_object) == np.ndarray:
             local_object = np.array(local_object)
 
         self._get_context(context_id).update_input_buffer(buffer_index, local_object)
-
-
 
     def exposed_create_output_buffer(self, context_id: str, object_type, shape) -> None:
         """[summary]
@@ -161,9 +173,9 @@ class RPyOpenCLService(Service):
             context_id (str): [description]
             object_type ([type]): [description]
             shape ([type]): [description]
-        """        
-        self._get_context(context_id).create_output_buffer(object_type, shape)        
-    
+        """
+        self._get_context(context_id).create_output_buffer(object_type, shape)
+
     def exposed_compile_kernel(self, context_id: str, kernel: str, use_prefered_vector_size: str = None) -> None:
         """[summary]
 
@@ -171,7 +183,7 @@ class RPyOpenCLService(Service):
             context_id (str): [description]
             kernel (str): [description]
             use_prefered_vector_size (str, optional): [description]. Defaults to None.
-        """        
+        """
         self._get_context(context_id).compile_kernel(kernel, use_prefered_vector_size)
 
     def exposed_execute_kernel(self, context_id: str, kernel_name: str, work_size: tuple, wait_execution: bool = True) -> np.array:
@@ -185,7 +197,7 @@ class RPyOpenCLService(Service):
 
         Returns:
             np.array: [description]
-        """        
+        """
         return self._get_context(context_id).execute_kernel(kernel_name, work_size, wait_execution)
 
     def exposed_run_perf_tests(self, context_id: str) -> None:
@@ -193,7 +205,7 @@ class RPyOpenCLService(Service):
 
         Args:
             context_id (str): [description]
-        """        
+        """
         self._get_context(context_id).run_perf_tests()
 
     def exposed_delete_context(self, context_id: str) -> None:
@@ -201,7 +213,7 @@ class RPyOpenCLService(Service):
 
         Args:
             context_id (str): [description]
-        """        
+        """
         if context_id in RPyOpenCLService.contexts:
             logging.debug("Removing context {}".format(context_id))
             del RPyOpenCLService.contexts[context_id]
@@ -212,6 +224,6 @@ class RPyOpenCLService(Service):
         Args:
             context_id (str): [description]
             cb (Callable): [description]
-        """        
+        """
         logging.debug("Received remote callback: {}, {}".format(cb, type(cb)))
-        self._get_context(context_id).set_callback(cb)       
+        self._get_context(context_id).set_callback(cb)

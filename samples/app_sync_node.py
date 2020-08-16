@@ -13,7 +13,11 @@ size = 50000
 kernel_name = "sum_mul"
 a_np = np.random.rand(size).astype(object_type)
 b_np = np.random.rand(size).astype(object_type)
-nodes = [ {"name": "rpi-opencl1", "ip": "localhost"}, {"name": "rpi-opencl2", "ip": "localhost"}  ]
+nodes = [
+    {"name": "rpi-opencl1", "ip": "localhost"},
+    {"name": "rpi-opencl2", "ip": "localhost"}
+]
+
 
 @timer
 def compute_on_one_node(node, ctx, kernel):
@@ -36,6 +40,7 @@ def compute_on_one_node(node, ctx, kernel):
 
     return res_list
 
+
 def compare_results(res_cl):
     print("Comparing the (a+b) and (a*b) results with local numpy")
     res_sum_np = np.array(res_cl[0])
@@ -49,6 +54,7 @@ def compare_results(res_cl):
     print("Difference:", res_mul_np - (a_np * b_np))
     print("Norm", np.linalg.norm(res_mul_np - (a_np * b_np)))
     assert np.allclose(res_mul_np, a_np * b_np)
+
 
 if __name__ == "__main__":
 
@@ -88,7 +94,3 @@ if __name__ == "__main__":
     print("Cleaning")
     node1.delete_context(ctx)
     node1.disconnect()
-
-
-
-    

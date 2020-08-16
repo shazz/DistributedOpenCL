@@ -14,13 +14,17 @@ kernel_name = "test_sqrt"
 
 a_np = np.random.rand(size).astype(object_type)
 b_np = np.random.rand(size).astype(object_type)
-nodes = [ {"name": "rpi-opencl1", "ip": "localhost"}, {"name": "rpi-opencl2", "ip": "localhost"}  ]
+nodes = [
+    {"name": "rpi-opencl1", "ip": "localhost"},
+    {"name": "rpi-opencl2", "ip": "localhost"}
+]
+
 
 @timer
 def compute_on_cluster(cl_context, kernel):
 
     print("Compiling kernel on all the nodes of the cluster")
-    cl_context.compile_kernel(kernel, use_prefered_vector_size = "float")
+    cl_context.compile_kernel(kernel, use_prefered_vector_size="float")
 
     print("Create 2 inputs buffers of size {} and type {}".format(type(a_np), a_np.shape))
     cl_context.create_input_buffer(local_object=a_np)
@@ -34,6 +38,7 @@ def compute_on_cluster(cl_context, kernel):
     res_cl_np_arrays = cl_context.execute_kernel(kernel_name, (size,))
 
     return res_cl_np_arrays
+
 
 if __name__ == "__main__":
 
@@ -51,7 +56,7 @@ if __name__ == "__main__":
         print(json.dumps(platform, indent=4, sort_keys=True))
 
     print("Create Cluster in async mode")
-    cluster = RPyOpenCLCluster(nodes, use_async=True) 
+    cluster = RPyOpenCLCluster(nodes, use_async=True)
 
     print("Creating a clustered context")
     context = cluster.create_cluster_context()
@@ -62,7 +67,3 @@ if __name__ == "__main__":
     print("Cleaning")
     cluster.delete_cluster_context(context)
     cluster.disconnect_cluster_context(context)
-
-
-
-    

@@ -9,9 +9,15 @@ from PIL import Image
 import logging
 from decorators import timer
 
-NODES = [ {"name": "rpi-opencl1", "ip": "localhost"}, {"name": "rpi-opencl2", "ip": "localhost"}, {"name": "rpi-opencl3", "ip": "localhost"}, {"name": "rpi-opencl4", "ip": "localhost"}    ]
+NODES = [
+    {"name": "rpi-opencl1", "ip": "localhost"},
+    {"name": "rpi-opencl2", "ip": "localhost"},
+    {"name": "rpi-opencl3", "ip": "localhost"},
+    {"name": "rpi-opencl4", "ip": "localhost"}
+]
 
-@timer 
+
+@timer
 def setup_opencl_kernel():
 
     logging.debug("Create Cluster")
@@ -33,8 +39,9 @@ def setup_opencl_kernel():
 
     return cluster, context
 
+
 @timer
-def compute_fractal(cl_context, q, maxiter, is_update = False):
+def compute_fractal(cl_context, q: np.array, maxiter: int, is_update: bool = False):
 
     array_type = np.uint16
 
@@ -55,6 +62,7 @@ def compute_fractal(cl_context, q, maxiter, is_update = False):
 
     return res_np_arrays
 
+
 def generate_inputs(x1, x2, y1, y2, w, h):
     # draw the Mandelbrot set, from numpy example
     xx = np.arange(x1, x2, (x2-x1)/w)
@@ -62,6 +70,7 @@ def generate_inputs(x1, x2, y1, y2, w, h):
     q = np.ravel(xx+yy[:, np.newaxis]).astype(np.complex64)
 
     return q
+
 
 if __name__ == '__main__':
 
@@ -77,18 +86,17 @@ if __name__ == '__main__':
     maxiter_start = 30
     maxiter_stop = 1000
     maxiter_step = 50
-    q = generate_inputs(x1=-2.13*zoom_factor, x2=0.77*zoom_factor, y1=-1.3*zoom_factor, y2=1.3*zoom_factor, w=w, h=h)
-    
+    q = generate_inputs(x1=-2.13*zoom_factor, x2=0.77*zoom_factor,   y1=-1.3*zoom_factor, y2=1.3*zoom_factor, w=w, h=h)
+
     # Compute fractal
     for maxiter in range(maxiter_start, maxiter_stop, maxiter_step):
-        output = compute_fractal(context, q, maxiter = maxiter, is_update=(maxiter != maxiter_start))
+        output = compute_fractal(context, q, maxiter=maxiter, is_update=(maxiter != maxiter_start))
 
         logging.debug("Reshaping from {} to {}".format(output.shape, (w, h)))
         mandel = (output.reshape((h, w)) / float(output.max()) * 255.).astype(np.uint8)
 
         im = Image.fromarray(mandel)
-        im.putpalette([i for rgb in ((j, 0, 0) for j in range(255))
-                            for i in rgb])
+        im.putpalette([i for rgb in ((j, 0, 0) for j in range(255)) for i in rgb])
         im.save("fractals/fractal_cluster_{}.png".format(maxiter))
 
     cluster.delete_cluster_context(context)

@@ -9,11 +9,15 @@ from PIL import Image
 import logging
 from decorators import timer
 
-@timer 
+nodes = [
+    {"name": "rpi-opencl1", "ip": "localhost"}
+]
+
+
+@timer
 def setup_opencl_kernel():
 
     logging.debug("Create Cluster")
-    nodes = [ {"name": "rpi-opencl1", "ip": "localhost"} ]
     cluster = RPyOpenCLCluster(nodes)
 
     logging.debug("Get Platforms on the cluster")
@@ -45,6 +49,7 @@ def setup_opencl_kernel():
 
     return node, ctx
 
+
 @timer
 def compute_fractal(node, ctx, q, maxiter):
 
@@ -62,6 +67,7 @@ def compute_fractal(node, ctx, q, maxiter):
 
     return res_np_arrays
 
+
 def generate_inputs(x1, x2, y1, y2, w, h):
     # draw the Mandelbrot set, from numpy example
     xx = np.arange(x1, x2, (x2-x1)/w)
@@ -69,6 +75,7 @@ def generate_inputs(x1, x2, y1, y2, w, h):
     q = np.ravel(xx+yy[:, np.newaxis]).astype(np.complex64)
 
     return q
+
 
 if __name__ == '__main__':
 
@@ -81,22 +88,17 @@ if __name__ == '__main__':
 
     # generate inputs
     q = generate_inputs(x1=-2.13, x2=0.77, y1=-1.3, y2=1.3, w=w, h=h)
-    
+
     # Compute fractal
-    output = compute_fractal(node, ctx, q, maxiter = 30)
+    output = compute_fractal(node, ctx, q, maxiter=30)
 
     logging.debug("Reshaping from {} to {}".format(output.shape, (w, h)))
     mandel = (output.reshape((h, w)) / float(output.max()) * 255.).astype(np.uint8)
 
     im = Image.fromarray(mandel)
-    im.putpalette([i for rgb in ((j, 0, 0) for j in range(255))
-                        for i in rgb])
+    im.putpalette([i for rgb in ((j, 0, 0) for j in range(255)) for i in rgb])
     im.save("fractal_node.png")
 
     # cleaning
     node.delete_context(ctx)
-    node.disconnect()    
-
-
-
-
+    node.disconnect()
